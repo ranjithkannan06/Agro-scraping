@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Athanur Agro",
-    "slug": "athanur-agro",
+    "name": "HarvestHub",
+    "slug": "harvesthub",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

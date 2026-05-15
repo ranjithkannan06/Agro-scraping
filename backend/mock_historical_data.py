@@ -6,7 +6,7 @@ import random
 async def main():
     print("Connecting to MongoDB...")
     client = AsyncIOMotorClient("mongodb://mongodb:27017")
-    db = client["athanur_agro"]
+    db = client["harvesthub"]
     collection = db["market_prices"]
     
     # Get today's date

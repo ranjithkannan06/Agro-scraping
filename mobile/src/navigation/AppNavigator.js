@@ -24,7 +24,7 @@ export default function AppNavigator() {
         <Stack.Screen 
           name="Home" 
           component={HomeScreen} 
-          options={{ title: 'Athanur Agro' }}
+          options={{ title: 'HarvestHub' }}
         />
         <Stack.Screen 
           name="LivePrices" 

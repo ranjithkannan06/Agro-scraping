@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 init_firebase()
 
 app = FastAPI(
-    title="Athanur Agro API",
-    description="Backend API for Athanur Agro mobile application",
+    title="HarvestHub API",
+    description="Backend API for HarvestHub mobile application",
     version="1.0.0"
 )
 
@@ -57,4 +57,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to Athanur Agro API"}
+    return {"message": "Welcome to HarvestHub API"}

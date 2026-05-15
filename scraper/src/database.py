@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 class Database:
     def __init__(self):
         self.url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-        self.db_name = os.getenv("DATABASE_NAME", "athanur_agro")
+        self.db_name = os.getenv("DATABASE_NAME", "harvesthub")
         self.client = None
         self.db = None
 

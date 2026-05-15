@@ -17,7 +17,7 @@ async def main():
     # 1. Connect to MongoDB
     print("Connecting to MongoDB...")
     client = AsyncIOMotorClient("mongodb://mongodb:27017")
-    db = client["athanur_agro"]
+    db = client["harvesthub"]
     collection = db["market_prices"]
     
     # Fetch all records, sorted by Date (oldest first)

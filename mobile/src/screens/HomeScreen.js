@@ -6,7 +6,7 @@ export default function HomeScreen({ navigation }) {
     <SafeAreaView className="flex-1 bg-light">
       <View className="flex-1 justify-center items-center p-4">
         <Text className="text-3xl font-bold text-primary mb-2">Welcome to</Text>
-        <Text className="text-4xl font-extrabold text-dark mb-8">Athanur Agro</Text>
+        <Text className="text-4xl font-extrabold text-dark mb-8">HarvestHub</Text>
         
         <View className="w-full space-y-4">
           <TouchableOpacity 
