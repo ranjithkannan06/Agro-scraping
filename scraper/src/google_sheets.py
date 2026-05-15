@@ -8,17 +8,25 @@ logger = logging.getLogger(__name__)
 class GoogleSheetsService:
     def __init__(self):
         self.sheet_id = os.getenv("GOOGLE_SHEET_ID")
-        self.credentials_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "firebase-service-account.json")
+        # Use env var or default to app root
+        cred_file = os.getenv("GOOGLE_CREDENTIALS_FILE", "firebase-service-account.json")
+        if os.path.isabs(cred_file):
+            self.credentials_path = cred_file
+        else:
+            # Assume it's in the app root (one level up from src)
+            self.credentials_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), cred_file)
+            
         self.client = None
         self.worksheet = None
         
         self.headers = ["Date", "Category", "Commodity", "District", "City", "Price", "Unit"]
+        logger.info(f"Initializing Google Sheets Service with sheet: {self.sheet_id}")
         self._init_client()
 
     def _init_client(self):
         try:
             if not os.path.exists(self.credentials_path):
-                logger.warning(f"Google Sheets credentials not found at {self.credentials_path}")
+                logger.error(f"Google Sheets credentials not found at {self.credentials_path}. Check GOOGLE_CREDENTIALS_FILE env var.")
                 return
                 
             scopes = [

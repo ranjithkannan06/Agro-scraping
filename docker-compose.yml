@@ -37,6 +37,8 @@ services:
     restart: always
     volumes:
       - ./firebase-service-account.json:/app/firebase-service-account.json:ro
+      - ./scraper:/app
+
 
 volumes:
   mongodb_data:

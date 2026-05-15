@@ -51,30 +51,21 @@
         </p>
 
         <!-- Filters (Exact Replica) -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-10 items-end">
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Categories</label>
-                <div class="relative">
-                    <span class="absolute left-3 top-3 text-green-600">🌿</span>
-                    <select id="categoryInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600 appearance-none">
-                        <option value="">All Categories</option>
-                        <option value="Flower" selected>Flower</option>
-                        <option value="Vegetables">Vegetables</option>
-                        <option value="Fruits">Fruits</option>
-                    </select>
-                </div>
-            </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Categories</label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-3 text-green-600">🌿</span>
+                                <select id="categoryInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded text-gray-400 cursor-not-allowed appearance-none" disabled>
+                                    <option value="Flower" selected>Flowers</option>
+                                </select>
+                            </div>
+                        </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-2">Districts</label>
                 <div class="relative">
                     <span class="absolute left-3 top-3 text-green-600">📍</span>
-                    <select id="districtInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600 appearance-none">
-                        <option value="">All Districts</option>
-                        <option value="Madurai">Madurai</option>
-                        <option value="Dindigul">Dindigul</option>
-                        <option value="Salem">Salem</option>
-                        <option value="Krishnagiri">Krishnagiri</option>
-                        <option value="Tiruchirappalli">Tiruchirappalli</option>
+                    <select id="districtInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600 appearance-none" onchange="updateCities()">
+                        <!-- Populated dynamically from API -->
                     </select>
                 </div>
             </div>
@@ -83,12 +74,7 @@
                 <div class="relative">
                     <span class="absolute left-3 top-3 text-green-600">🏙️</span>
                     <select id="cityInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600 appearance-none">
-                        <option value="">All Cities</option>
-                        <option value="Hosur">Hosur</option>
-                        <option value="Madurai Market">Madurai Market</option>
-                        <option value="Nilakottai">Nilakottai</option>
-                        <option value="Ottanchathiram">Ottanchathiram</option>
-                        <option value="Koyambedu">Koyambedu</option>
+                        <!-- Populated dynamically -->
                     </select>
                 </div>
             </div>
@@ -234,6 +220,39 @@
             statusMessage.classList.add('hidden');
         }
 
+        async function updateCities() {
+            const district = districtInput.value;
+            cityInput.innerHTML = '';
+            
+            if (district) {
+                // Fetch cities for this district from backend
+                try {
+                    const res = await fetch(`${API_BASE}/prices?district=${encodeURIComponent(district)}`);
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        // Extract unique cities (markets) from the price data
+                        const cities = [...new Set(data.data.map(p => p.market || p.city))].filter(Boolean);
+                        cities.forEach(c => {
+                            const opt = document.createElement('option');
+                            opt.value = c; opt.textContent = c;
+                            cityInput.appendChild(opt);
+                        });
+                        
+                        // If no cities found, fallback to "[District] city"
+                        if (cities.length === 0) {
+                            const opt = document.createElement('option');
+                            const cityName = `${district} city`;
+                            opt.value = cityName;
+                            opt.textContent = cityName;
+                            cityInput.appendChild(opt);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch cities:", e);
+                }
+            }
+        }
+
         async function fetchFilters() {
             try {
                 const [catRes, distRes] = await Promise.all([
@@ -243,20 +262,31 @@
                 const catData = await catRes.json();
                 const distData = await distRes.json();
                 
+                // We are now hardcoded to Flowers, so we don't need to fetch other categories
+                /*
                 if (catData.status === 'success') {
                     catData.data.forEach(c => {
-                        const opt = document.createElement('option');
-                        opt.value = c; opt.textContent = c;
-                        categoryInput.appendChild(opt);
+                        if (!Array.from(categoryInput.options).some(opt => opt.value === c)) {
+                            const opt = document.createElement('option');
+                            opt.value = c; opt.textContent = c;
+                            categoryInput.appendChild(opt);
+                        }
                     });
                 }
+                */
+
                 if (distData.status === 'success') {
-                    distData.data.forEach(d => {
+                    districtInput.innerHTML = ''; // Clear hardcoded ones
+                    distData.data.sort().forEach(d => {
                         const opt = document.createElement('option');
                         opt.value = d; opt.textContent = d;
                         districtInput.appendChild(opt);
                     });
                 }
+                
+                // Initialize cities based on default district
+                await updateCities();
+                
             } catch (err) {
                 console.error("Filters Error:", err);
             }

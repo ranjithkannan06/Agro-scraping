@@ -68,3 +68,13 @@ async def get_districts(request: Request):
     collection = db["market_prices"]
     districts = await collection.distinct("district")
     return {"status": "success", "data": districts}
+
+@api_router.get("/cities")
+async def get_cities(request: Request, district: str = None):
+    db = request.app.mongodb
+    collection = db["market_prices"]
+    query = {}
+    if district:
+        query["district"] = {"$regex": district, "$options": "i"}
+    cities = await collection.distinct("city", query)
+    return {"status": "success", "data": cities}
