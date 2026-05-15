@@ -1,0 +1,73 @@
+# ============================================================
+#  SECURITY — Secret files (NEVER commit these)
+# ============================================================
+.env
+*.env
+firebase-service-account.json
+google-services.json
+*-service-account.json
+*credentials*.json
+*secret*.json
+*.pem
+*.key
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+.Python
+env/
+venv/
+.venv/
+ENV/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+wheels/
+*.egg
+MANIFEST
+
+# ── Node / React Native ──────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp
+.pnp.js
+.expo/
+.expo-shared/
+web-build/
+dist/
+
+# ── IDE / Editor ─────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*.DS_Store
+Thumbs.db
+
+# ── Docker ───────────────────────────────────────────────────
+*.log
+
+# ── Scraped / temp output files ───────────────────────────────
+scraper_output.html
+vayal_dump.html
+*.html.bak

@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Athanur Agro - Market Price</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts: Poppins (matches VayalAgro vibe) -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #fafafa; }
+        .vayal-btn { background-color: #059669; color: white; transition: background-color 0.2s; }
+        .vayal-btn:hover { background-color: #047857; }
+        
+        /* Modal Styles */
+        .modal { display: none; position: fixed; inset: 0; z-index: 50; background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; padding: 2rem; rounded: 0.5rem; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body class="text-gray-800 antialiased min-h-screen">
+
+    <!-- Header / Nav -->
+    <nav class="bg-white shadow-sm py-4 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <div class="bg-gradient-to-br from-green-500 to-yellow-400 w-8 h-8 flex items-center justify-center rounded text-white font-bold text-lg leading-none italic">A</div>
+                <h1 class="text-xl font-bold tracking-tight text-gray-800">ATHANUR<span class="text-green-600 font-light">AGRO™</span></h1>
+            </div>
+            <div class="hidden md:flex items-center gap-6 text-sm font-medium text-gray-600">
+                <a href="#" class="hover:text-green-600 flex items-center gap-1"><span class="text-lg">🔠</span> Categories</a>
+                <a href="#" class="text-green-600 border-b-2 border-green-600 pb-1 flex items-center gap-1"><span class="text-lg">📈</span> Market Price</a>
+            </div>
+            <!-- Language Toggle -->
+            <div>
+                <button id="langToggle" onclick="toggleLanguage()" class="px-4 py-1.5 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50 flex items-center gap-2 transition-colors">
+                    🌐 English
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Hero Text -->
+        <p class="text-sm text-gray-500 mb-8 leading-relaxed md:text-center max-w-4xl mx-auto">
+            <span id="descEn">Athanur Agro provides information on daily cost updates for fresh commodities. Our listings help to stay updated on market trends and discover the matching deals. Our price today covers all popular varieties even you can monitor the market rate history to identify the best times to buy.</span>
+            <span id="descTa" class="hidden">அத்தனூர் அக்ரோ புதிய பொருட்களுக்கான தினசரி விலை புதுப்பிப்புகளை வழங்குகிறது. சந்தை நிலவரங்களை உடனுக்குடன் அறியவும், சிறந்த சலுகைகளை கண்டறியவும் எங்கள் தளம் உதவுகிறது.</span>
+        </p>
+
+        <!-- Filters (Exact Replica) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-10 items-end">
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Categories</label>
+                <div class="relative">
+                    <span class="absolute left-3 top-3 text-green-600">🌿</span>
+                    <select id="categoryInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600 appearance-none">
+                        <option value="">All Categories</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Districts</label>
+                <div class="relative">
+                    <span class="absolute left-3 top-3 text-green-600">📍</span>
+                    <select id="districtInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600 appearance-none">
+                        <option value="">All Districts</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">City</label>
+                <div class="relative">
+                    <span class="absolute left-3 top-3 text-green-600">📍</span>
+                    <select id="cityInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600 appearance-none">
+                        <option value="">All</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Date</label>
+                <div class="relative">
+                    <input type="date" id="dateInput" class="w-full px-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600">
+                </div>
+            </div>
+            <div>
+                <button onclick="fetchPrices()" class="w-full py-2.5 vayal-btn rounded font-medium shadow flex justify-center items-center gap-2">
+                    Search
+                </button>
+            </div>
+        </div>
+
+        <!-- Title -->
+        <h2 id="tableTitle" class="text-2xl font-bold text-center text-[#1e3a8a] mb-8">Trend of Market Price Today</h2>
+        
+        <!-- Error / Loading Display -->
+        <div id="statusMessage" class="text-center font-semibold text-red-500 mb-4 hidden"></div>
+
+        <!-- Data Table (Exact Replica) -->
+        <div class="bg-white rounded shadow-sm border border-gray-200 overflow-x-auto w-full">
+            <table class="w-full text-left min-w-[800px]">
+                <thead class="bg-[#f8fafc] text-sm text-gray-600 font-bold border-b border-gray-200">
+                    <tr>
+                        <th class="px-6 py-4">Category</th>
+                        <th class="px-6 py-4">District</th>
+                        <th class="px-6 py-4">City</th>
+                        <th class="px-6 py-4">Price</th>
+                        <th class="px-6 py-4">Units</th>
+                        <th class="px-6 py-4 text-center">History Price</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody" class="divide-y divide-gray-100 text-sm font-medium text-gray-800">
+                    <!-- JS Rows -->
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <!-- History Price Modal (Chart.js) -->
+    <div id="chartModal" class="modal">
+        <div class="modal-content relative rounded-lg m-4 w-full">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-gray-500 hover:text-red-500 text-3xl font-bold leading-none">&times;</button>
+            <h3 id="modalTitle" class="text-lg sm:text-xl font-bold text-[#1e3a8a] mb-6">History Price of <span id="modalCommodityName"></span></h3>
+            
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <p class="text-gray-500 text-xs sm:text-sm mb-1" id="modalDateLabel">Price Today</p>
+                    <p class="text-xl sm:text-2xl font-bold text-gray-900" id="modalCurrentPrice">Rs. 0</p>
+                </div>
+            </div>
+
+            <!-- Chart Canvas -->
+            <div class="w-full h-[300px] sm:h-[400px]">
+                <canvas id="historyChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Use 127.0.0.1 instead of localhost to prevent DNS resolution issues on Windows
+        const API_BASE = 'http://127.0.0.1:8000/api';
+        
+        // Language State
+        let currentLang = 'en';
+        let tamilCache = {}; // Cache to avoid duplicate API calls
+        
+        async function translateToTamil(text) {
+            if (tamilCache[text]) return tamilCache[text];
+            try {
+                const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ta&dt=t&q=${encodeURIComponent(text)}`);
+                const data = await res.json();
+                const translated = data[0][0][0];
+                tamilCache[text] = translated;
+                return translated;
+            } catch (e) {
+                return text; // fallback to English on failure
+            }
+        }
+
+        async function toggleLanguage() {
+            currentLang = currentLang === 'en' ? 'ta' : 'en';
+            const btn = document.getElementById('langToggle');
+            const thElements = document.querySelectorAll('thead th');
+            
+            if (currentLang === 'ta') {
+                btn.innerHTML = '🌐 தமிழ்';
+                document.getElementById('descEn').classList.add('hidden');
+                document.getElementById('descTa').classList.remove('hidden');
+                document.getElementById('tableTitle').textContent = 'இன்றைய சந்தை விலை நிலவரம்';
+                
+                // Translate headers
+                const taHeaders = ['வகை', 'மாவட்டம்', 'நகரம்', 'விலை', 'அலகு', 'வரலாற்று விலை'];
+                thElements.forEach((th, i) => th.textContent = taHeaders[i]);
+            } else {
+                btn.innerHTML = '🌐 English';
+                document.getElementById('descEn').classList.remove('hidden');
+                document.getElementById('descTa').classList.add('hidden');
+                document.getElementById('tableTitle').textContent = 'Trend of Market Price Today';
+                
+                // English headers
+                const enHeaders = ['Category', 'District', 'City', 'Price', 'Units', 'History Price'];
+                thElements.forEach((th, i) => th.textContent = enHeaders[i]);
+            }
+            // Re-render table to update languages
+            if (allPrices.length > 0) {
+                renderTable();
+            }
+        }
+        
+        // DOM Elements
+        const dateInput = document.getElementById('dateInput');
+        const categoryInput = document.getElementById('categoryInput');
+        const districtInput = document.getElementById('districtInput');
+        const tableBody = document.getElementById('tableBody');
+        const statusMessage = document.getElementById('statusMessage');
+        const modal = document.getElementById('chartModal');
+        
+        let allPrices = [];
+        let chartInstance = null;
+
+        // Set today's date
+        dateInput.value = new Date().toISOString().split('T')[0];
+
+        function showStatus(msg, isError = false) {
+            statusMessage.textContent = msg;
+            statusMessage.className = `text-center font-semibold mb-4 ${isError ? 'text-red-600' : 'text-blue-600'}`;
+            statusMessage.classList.remove('hidden');
+        }
+        function hideStatus() {
+            statusMessage.classList.add('hidden');
+        }
+
+        async function fetchFilters() {
+            try {
+                const [catRes, distRes] = await Promise.all([
+                    fetch(`${API_BASE}/categories`),
+                    fetch(`${API_BASE}/districts`)
+                ]);
+                const catData = await catRes.json();
+                const distData = await distRes.json();
+                
+                if (catData.status === 'success') {
+                    catData.data.forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = c; opt.textContent = c;
+                        categoryInput.appendChild(opt);
+                    });
+                }
+                if (distData.status === 'success') {
+                    distData.data.forEach(d => {
+                        const opt = document.createElement('option');
+                        opt.value = d; opt.textContent = d;
+                        districtInput.appendChild(opt);
+                    });
+                }
+            } catch (err) {
+                console.error("Filters Error:", err);
+            }
+        }
+
+        async function fetchPrices() {
+            tableBody.innerHTML = '';
+            showStatus("Loading data from backend...");
+            
+            const category = categoryInput.value;
+            const district = districtInput.value;
+            const date = dateInput.value;
+            
+            let url = `${API_BASE}/prices?`;
+            if (category) url += `category=${encodeURIComponent(category)}&`;
+            if (district) url += `district=${encodeURIComponent(district)}&`;
+            if (date) url += `date=${encodeURIComponent(date)}&`;
+            
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error("Backend server refused connection");
+                
+                const data = await res.json();
+                if (data.status === 'success') {
+                    allPrices = data.data;
+                    renderTable();
+                } else {
+                    showStatus("Error: Invalid response format from API", true);
+                }
+            } catch (err) {
+                console.error("Prices Error:", err);
+                showStatus("Failed to load data. Please ensure your backend is running on http://127.0.0.1:8000.", true);
+            }
+        }
+
+        function renderTable() {
+            hideStatus();
+            tableBody.innerHTML = '';
+            
+            if (allPrices.length === 0) {
+                const msg = currentLang === 'ta' ? "தேர்ந்தெடுக்கப்பட்ட வடிகட்டிகளுக்கு சந்தை விலைகள் எதுவும் கிடைக்கவில்லை." : "No market prices found for the selected filters.";
+                showStatus(msg);
+                return;
+            }
+            
+            allPrices.forEach(p => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-50 transition-colors";
+                
+                // Set placeholders or english defaults
+                const catSpanId = `cat-${Math.random().toString(36).substr(2, 9)}`;
+                const commSpanId = `comm-${Math.random().toString(36).substr(2, 9)}`;
+                const distSpanId = `dist-${Math.random().toString(36).substr(2, 9)}`;
+                const citySpanId = `city-${Math.random().toString(36).substr(2, 9)}`;
+                const btnText = currentLang === 'ta' ? '📈 காண்க' : '📈 View';
+                
+                tr.innerHTML = `
+                    <td class="px-6 py-5 whitespace-nowrap">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800" id="${catSpanId}">
+                            ${p.category}
+                        </span>
+                    </td>
+                    <td class="px-6 py-5 flex items-center gap-3 min-w-[200px]">
+                        <span class="text-xl">🧺</span>
+                        <span id="${commSpanId}" class="font-semibold text-gray-900">${p.commodity}</span>
+                    </td>
+                    <td class="px-6 py-5" id="${distSpanId}">${p.district || 'N/A'}</td>
+                    <td class="px-6 py-5" id="${citySpanId}">${p.market || p.city || 'N/A'}</td>
+                    <td class="px-6 py-5 text-[#1e3a8a] font-bold whitespace-nowrap">Rs. ${p.price}</td>
+                    <td class="px-6 py-5 text-gray-500">${p.unit || 'Kg'}</td>
+                    <td class="px-6 py-5 text-center">
+                        <button onclick="openHistoryChart('${p.commodity.replace(/'/g, "\\'")}', '${p.category.replace(/'/g, "\\'")}')" class="vayal-btn px-4 py-1.5 rounded text-sm font-medium flex items-center justify-center gap-1 shadow-sm mx-auto">
+                            ${btnText}
+                        </button>
+                    </td>
+                `;
+                tableBody.appendChild(tr);
+                
+                // Lazily translate if needed
+                if (currentLang === 'ta') {
+                    translateToTamil(p.category).then(t => document.getElementById(catSpanId).textContent = t);
+                    translateToTamil(p.commodity).then(t => document.getElementById(commSpanId).textContent = t);
+                    if (p.district) translateToTamil(p.district).then(t => document.getElementById(distSpanId).textContent = t);
+                    const city = p.market || p.city;
+                    if (city) translateToTamil(city).then(t => document.getElementById(citySpanId).textContent = t);
+                }
+            });
+        }
+
+        // --- CHART JS MODAL LOGIC ---
+        
+        function closeModal() {
+            modal.classList.remove('active');
+        }
+
+        async function openHistoryChart(commodityName, category) {
+            document.getElementById('modalCommodityName').textContent = commodityName;
+            document.getElementById('modalDateLabel').textContent = \`Price \${dateInput.value}\`;
+            
+            // Find current price to show in header
+            const currentItem = allPrices.find(p => p.commodity === commodityName);
+            document.getElementById('modalCurrentPrice').textContent = \`Rs. \${currentItem ? currentItem.price : '0'}\`;
+            
+            modal.classList.add('active');
+            
+            // We need to fetch the last 7 days of data for THIS specific commodity
+            // Because our current endpoint filters by EXACT date, we need to fetch multiple dates or remove date filter
+            // For the dashboard, we'll fetch WITHOUT date filter, but WITH category filter, and filter the commodity locally.
+            
+            try {
+                let historyUrl = `${API_BASE}/prices?category=${encodeURIComponent(category || 'Flower')}`;
+                // Optional: also filter by district to be precise
+                if (districtInput.value) historyUrl += `&district=${encodeURIComponent(districtInput.value)}`;
+                
+                const res = await fetch(historyUrl);
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    // Filter down to just this commodity and sort by date ascending (oldest to newest)
+                    const commodityHistory = data.data
+                        .filter(p => p.commodity === commodityName)
+                        .sort((a, b) => new Date(a.date) - new Date(b.date));
+                        
+                    // Extract labels (dates) and data points (prices)
+                    const labels = commodityHistory.map(p => p.date.split('-').reverse().join('/')); // DD/MM/YYYY
+                    const pricePoints = commodityHistory.map(p => parseFloat(p.price));
+                    
+                    renderChart(labels, pricePoints);
+                }
+            } catch (err) {
+                console.error("Failed to fetch history:", err);
+            }
+        }
+
+        function renderChart(labels, dataPoints) {
+            const ctx = document.getElementById('historyChart').getContext('2d');
+            
+            // Destroy existing chart instance to prevent overlaps
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            // VayalAgro Green Gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(16, 185, 129, 0.4)'); // Emerald-500 fading out
+            gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Price (Rs)',
+                        data: dataPoints,
+                        borderColor: '#059669', // Emerald 600
+                        backgroundColor: gradient,
+                        borderWidth: 2,
+                        pointBackgroundColor: '#059669',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        fill: true,
+                        tension: 0.4 // Creates the smooth curves
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#1f2937',
+                            padding: 12,
+                            titleFont: { size: 14, family: 'Poppins' },
+                            bodyFont: { size: 14, family: 'Poppins', weight: 'bold' },
+                            displayColors: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return \`Rs: \${context.parsed.y}\`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: { color: '#f3f4f6', drawBorder: false },
+                            ticks: { font: { family: 'Poppins' }, color: '#6b7280' }
+                        },
+                        x: {
+                            grid: { display: false, drawBorder: false },
+                            ticks: { font: { family: 'Poppins' }, color: '#6b7280' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Init
+        fetchFilters().then(fetchPrices);
+        
+    </script>
+</body>
+</html>

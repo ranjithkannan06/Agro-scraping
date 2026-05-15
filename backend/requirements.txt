@@ -1,0 +1,12 @@
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
+motor==3.1.2
+pymongo==4.3.3
+pydantic==2.6.4
+pydantic-settings==2.2.1
+PyJWT==2.8.0
+python-multipart==0.0.9
+firebase-admin==6.5.0
+passlib[bcrypt]==1.7.4
+python-socketio==5.11.2
+websockets==12.0
