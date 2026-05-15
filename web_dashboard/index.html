@@ -51,13 +51,16 @@
         </p>
 
         <!-- Filters (Exact Replica) -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-10 items-end">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-10 items-end">
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-2">Categories</label>
                 <div class="relative">
                     <span class="absolute left-3 top-3 text-green-600">🌿</span>
                     <select id="categoryInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600 appearance-none">
                         <option value="">All Categories</option>
+                        <option value="Flower" selected>Flower</option>
+                        <option value="Vegetables">Vegetables</option>
+                        <option value="Fruits">Fruits</option>
                     </select>
                 </div>
             </div>
@@ -67,16 +70,33 @@
                     <span class="absolute left-3 top-3 text-green-600">📍</span>
                     <select id="districtInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600 appearance-none">
                         <option value="">All Districts</option>
+                        <option value="Madurai">Madurai</option>
+                        <option value="Dindigul">Dindigul</option>
+                        <option value="Salem">Salem</option>
+                        <option value="Krishnagiri">Krishnagiri</option>
+                        <option value="Tiruchirappalli">Tiruchirappalli</option>
                     </select>
                 </div>
             </div>
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-2">City</label>
                 <div class="relative">
-                    <span class="absolute left-3 top-3 text-green-600">📍</span>
+                    <span class="absolute left-3 top-3 text-green-600">🏙️</span>
                     <select id="cityInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600 appearance-none">
-                        <option value="">All</option>
+                        <option value="">All Cities</option>
+                        <option value="Hosur">Hosur</option>
+                        <option value="Madurai Market">Madurai Market</option>
+                        <option value="Nilakottai">Nilakottai</option>
+                        <option value="Ottanchathiram">Ottanchathiram</option>
+                        <option value="Koyambedu">Koyambedu</option>
                     </select>
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Commodity</label>
+                <div class="relative">
+                    <span class="absolute left-3 top-3 text-green-600">📦</span>
+                    <input type="text" id="commoditySearch" placeholder="Search Commodity..." class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600">
                 </div>
             </div>
             <div>
@@ -193,6 +213,8 @@
         const dateInput = document.getElementById('dateInput');
         const categoryInput = document.getElementById('categoryInput');
         const districtInput = document.getElementById('districtInput');
+        const cityInput = document.getElementById('cityInput');
+        const commoditySearch = document.getElementById('commoditySearch');
         const tableBody = document.getElementById('tableBody');
         const statusMessage = document.getElementById('statusMessage');
         const modal = document.getElementById('chartModal');
@@ -246,11 +268,14 @@
             
             const category = categoryInput.value;
             const district = districtInput.value;
+            const city = cityInput.value;
+            const commodity = commoditySearch.value.toLowerCase();
             const date = dateInput.value;
             
             let url = `${API_BASE}/prices?`;
             if (category) url += `category=${encodeURIComponent(category)}&`;
             if (district) url += `district=${encodeURIComponent(district)}&`;
+            if (city) url += `city=${encodeURIComponent(city)}&`;
             if (date) url += `date=${encodeURIComponent(date)}&`;
             
             try {
@@ -259,7 +284,14 @@
                 
                 const data = await res.json();
                 if (data.status === 'success') {
-                    allPrices = data.data;
+                    // Locally filter by commodity name if search is active
+                    if (commodity) {
+                        allPrices = data.data.filter(p => 
+                            p.commodity.toLowerCase().includes(commodity)
+                        );
+                    } else {
+                        allPrices = data.data;
+                    }
                     renderTable();
                 } else {
                     showStatus("Error: Invalid response format from API", true);
