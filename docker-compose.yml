@@ -29,7 +29,7 @@ services:
     build:
       context: ./scraper
       dockerfile: Dockerfile
-    container_name: athanur_scraper
+    container_name: harvesthub_scraper
     env_file:
       - .env
     depends_on:
