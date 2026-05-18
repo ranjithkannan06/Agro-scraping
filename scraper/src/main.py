@@ -31,15 +31,24 @@ async def scheduled_job():
             except Exception as e:
                 logger.error(f"Failed to sync to Google Sheets: {e}")
             
-            # Notify the backend to send push notifications
+            # Notify the backend to send push notifications + WebSocket broadcast
             import aiohttp
             try:
                 # Assuming backend service is accessible as 'backend:8000' in docker-compose
                 async with aiohttp.ClientSession() as session:
                     # Convert datetimes to string for JSON serialization
-                    serializable_data = [{k: (v.isoformat() if hasattr(v, 'isoformat') else v) for k, v in item.items()} for item in data]
+                    serializable_data = [
+                        {k: (v.isoformat() if hasattr(v, 'isoformat') else v) for k, v in item.items()}
+                        for item in data
+                    ]
+                    # 1. Trigger FCM push notifications to mobile
                     await session.post(
-                        'http://backend:8000/api/internal/notify', 
+                        'http://backend:8000/api/internal/notify',
+                        json={'items': serializable_data}
+                    )
+                    # 2. Broadcast WebSocket event to all connected dashboard clients
+                    await session.post(
+                        'http://backend:8000/api/internal/broadcast',
                         json={'items': serializable_data}
                     )
             except Exception as e:

@@ -14,11 +14,20 @@
         body { font-family: 'Poppins', sans-serif; background-color: #fafafa; }
         .vayal-btn { background-color: #059669; color: white; transition: background-color 0.2s; }
         .vayal-btn:hover { background-color: #047857; }
-        
-        /* Modal Styles */
         .modal { display: none; position: fixed; inset: 0; z-index: 50; background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center; }
         .modal.active { display: flex; }
-        .modal-content { background: white; padding: 2rem; rounded: 0.5rem; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        .modal-content { background: white; padding: 2rem; border-radius: 0.5rem; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        /* Toast */
+        #toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999; display: flex; flex-direction: column; gap: 0.75rem; }
+        .toast { background: #1f2937; color: white; padding: 0.85rem 1.25rem; border-radius: 0.6rem; font-size: 0.85rem; max-width: 340px; display: flex; align-items: flex-start; gap: 0.6rem; box-shadow: 0 8px 24px rgba(0,0,0,0.25); animation: slideIn 0.3s ease; }
+        .toast.success { border-left: 4px solid #10b981; }
+        .toast.info    { border-left: 4px solid #3b82f6; }
+        @keyframes slideIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+        /* Live badge */
+        .live-dot { width:8px; height:8px; border-radius:50%; background:#10b981; display:inline-block; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+        /* District loading spinner */
+        .district-loading { color: #6b7280; font-size: 0.8rem; padding: 0.5rem 0; }
     </style>
 </head>
 <body class="text-gray-800 antialiased min-h-screen">
@@ -34,8 +43,12 @@
                 <a href="#" class="hover:text-green-600 flex items-center gap-1"><span class="text-lg">🔠</span> Categories</a>
                 <a href="#" class="text-green-600 border-b-2 border-green-600 pb-1 flex items-center gap-1"><span class="text-lg">📈</span> Market Price</a>
             </div>
-            <!-- Language Toggle -->
-            <div>
+            <!-- Live Status Badge + Language Toggle -->
+            <div class="flex items-center gap-3">
+                <div id="liveStatusBadge" class="hidden items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                    <span class="live-dot"></span>
+                    <span id="liveStatusText">0 districts today</span>
+                </div>
                 <button id="langToggle" onclick="toggleLanguage()" class="px-4 py-1.5 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50 flex items-center gap-2 transition-colors">
                     🌐 English
                 </button>
@@ -51,8 +64,9 @@
         </p>
 
         <!-- Filters (Exact Replica) -->
-                        <div>
-                            <label class="block text-sm font-semibold text-gray-700 mb-2">Categories</label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 bg-white p-6 rounded shadow-sm border border-gray-200 mb-8 items-end">
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Categories</label>
                             <div class="relative">
                                 <span class="absolute left-3 top-3 text-green-600">🌿</span>
                                 <select id="categoryInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded text-gray-400 cursor-not-allowed appearance-none" disabled>
@@ -76,13 +90,6 @@
                     <select id="cityInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600 appearance-none">
                         <!-- Populated dynamically -->
                     </select>
-                </div>
-            </div>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Commodity</label>
-                <div class="relative">
-                    <span class="absolute left-3 top-3 text-green-600">📦</span>
-                    <input type="text" id="commoditySearch" placeholder="Search Commodity..." class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600">
                 </div>
             </div>
             <div>
@@ -195,12 +202,13 @@
             }
         }
         
+        console.log("HarvestHub JS Script started executing!");
+
         // DOM Elements
         const dateInput = document.getElementById('dateInput');
         const categoryInput = document.getElementById('categoryInput');
         const districtInput = document.getElementById('districtInput');
         const cityInput = document.getElementById('cityInput');
-        const commoditySearch = document.getElementById('commoditySearch');
         const tableBody = document.getElementById('tableBody');
         const statusMessage = document.getElementById('statusMessage');
         const modal = document.getElementById('chartModal');
@@ -209,7 +217,9 @@
         let chartInstance = null;
 
         // Set today's date
-        dateInput.value = new Date().toISOString().split('T')[0];
+        if (dateInput) {
+            dateInput.value = new Date().toISOString().split('T')[0];
+        }
 
         function showStatus(msg, isError = false) {
             statusMessage.textContent = msg;
@@ -253,43 +263,50 @@
             }
         }
 
-        async function fetchFilters() {
+        // --- DYNAMIC DISTRICT DROPDOWN (date-aware) ---
+        async function fetchDistrictsForDate(selectedDate) {
+            districtInput.innerHTML = '<option disabled>Loading districts...</option>';
             try {
-                const [catRes, distRes] = await Promise.all([
-                    fetch(`${API_BASE}/categories`),
-                    fetch(`${API_BASE}/districts`)
-                ]);
-                const catData = await catRes.json();
-                const distData = await distRes.json();
-                
-                // We are now hardcoded to Flowers, so we don't need to fetch other categories
-                /*
-                if (catData.status === 'success') {
-                    catData.data.forEach(c => {
-                        if (!Array.from(categoryInput.options).some(opt => opt.value === c)) {
-                            const opt = document.createElement('option');
-                            opt.value = c; opt.textContent = c;
-                            categoryInput.appendChild(opt);
-                        }
-                    });
-                }
-                */
-
-                if (distData.status === 'success') {
-                    districtInput.innerHTML = ''; // Clear hardcoded ones
-                    distData.data.sort().forEach(d => {
+                const url = selectedDate
+                    ? `${API_BASE}/districts/today?date=${selectedDate}`
+                    : `${API_BASE}/districts/today`;
+                const res = await fetch(url);
+                const data = await res.json();
+                districtInput.innerHTML = '';
+                if (data.status === 'success' && data.data.length > 0) {
+                    data.data.forEach(d => {
                         const opt = document.createElement('option');
                         opt.value = d; opt.textContent = d;
                         districtInput.appendChild(opt);
                     });
+                    // Update live badge
+                    const badge = document.getElementById('liveStatusBadge');
+                    document.getElementById('liveStatusText').textContent = `${data.count} district${data.count !== 1 ? 's' : ''} today`;
+                    badge.classList.remove('hidden');
+                    badge.classList.add('flex');
+                } else {
+                    // Fallback: load all-time districts
+                    const fallback = await fetch(`${API_BASE}/districts`);
+                    const fdata = await fallback.json();
+                    if (fdata.status === 'success') {
+                        fdata.data.sort().forEach(d => {
+                            const opt = document.createElement('option');
+                            opt.value = d; opt.textContent = `${d} (historical)`;
+                            districtInput.appendChild(opt);
+                        });
+                    }
+                    showToast('info', '📋 No districts scraped yet today. Showing historical data.');
                 }
-                
-                // Initialize cities based on default district
-                await updateCities();
-                
             } catch (err) {
-                console.error("Filters Error:", err);
+                console.error('District fetch error:', err);
+                districtInput.innerHTML = '<option value="">All Districts</option>';
             }
+            await updateCities();
+        }
+
+        async function fetchFilters() {
+            const today = new Date().toISOString().split('T')[0];
+            await fetchDistrictsForDate(today);
         }
 
         async function fetchPrices() {
@@ -299,7 +316,6 @@
             const category = categoryInput.value;
             const district = districtInput.value;
             const city = cityInput.value;
-            const commodity = commoditySearch.value.toLowerCase();
             const date = dateInput.value;
             
             let url = `${API_BASE}/prices?`;
@@ -314,14 +330,7 @@
                 
                 const data = await res.json();
                 if (data.status === 'success') {
-                    // Locally filter by commodity name if search is active
-                    if (commodity) {
-                        allPrices = data.data.filter(p => 
-                            p.commodity.toLowerCase().includes(commodity)
-                        );
-                    } else {
-                        allPrices = data.data;
-                    }
+                    allPrices = data.data;
                     renderTable();
                 } else {
                     showStatus("Error: Invalid response format from API", true);
@@ -394,11 +403,11 @@
 
         async function openHistoryChart(commodityName, category) {
             document.getElementById('modalCommodityName').textContent = commodityName;
-            document.getElementById('modalDateLabel').textContent = \`Price \${dateInput.value}\`;
+            document.getElementById('modalDateLabel').textContent = `Price ${dateInput.value}`;
             
             // Find current price to show in header
             const currentItem = allPrices.find(p => p.commodity === commodityName);
-            document.getElementById('modalCurrentPrice').textContent = \`Rs. \${currentItem ? currentItem.price : '0'}\`;
+            document.getElementById('modalCurrentPrice').textContent = `Rs. ${currentItem ? currentItem.price : '0'}`;
             
             modal.classList.add('active');
             
@@ -476,7 +485,7 @@
                             displayColors: false,
                             callbacks: {
                                 label: function(context) {
-                                    return \`Rs: \${context.parsed.y}\`;
+                                    return `Rs: ${context.parsed.y}`;
                                 }
                             }
                         }
@@ -496,7 +505,60 @@
             });
         }
 
+        // --- DATE CHANGE: reload districts dynamically ---
+        dateInput.addEventListener('change', async () => {
+            await fetchDistrictsForDate(dateInput.value);
+            fetchPrices();
+        });
+
+        // --- WEBSOCKET: real-time scraper notifications ---
+        function connectWebSocket() {
+            const wsUrl = API_BASE.replace('http', 'ws').replace('/api', '') + '/ws/prices';
+            let ws;
+            try { ws = new WebSocket(wsUrl); } catch(e) { return; }
+            ws.onopen = () => console.log('WS connected');
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.event === 'scraper_update') {
+                        const districts = msg.districts_updated || [];
+                        showToast('success',
+                            `🌿 New data! ${msg.new_records} records across ${msg.districts_count} district${msg.districts_count !== 1 ? 's' : ''}` +
+                            (districts.length ? `\n${districts.slice(0,3).join(', ')}${districts.length > 3 ? '...' : ''}` : '')
+                        );
+                        // Refresh district dropdown and table for today
+                        const today = new Date().toISOString().split('T')[0];
+                        if (dateInput.value === today) {
+                            fetchDistrictsForDate(today).then(fetchPrices);
+                        }
+                        // Update badge
+                        document.getElementById('liveStatusText').textContent =
+                            `${msg.districts_count} district${msg.districts_count !== 1 ? 's' : ''} today`;
+                        document.getElementById('liveStatusBadge').classList.remove('hidden');
+                        document.getElementById('liveStatusBadge').classList.add('flex');
+                    }
+                } catch(e) {}
+            };
+            ws.onclose = () => setTimeout(connectWebSocket, 5000); // auto-reconnect
+        }
+
+        // --- TOAST NOTIFICATIONS ---
+        function showToast(type, message) {
+            let container = document.getElementById('toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toast-container';
+                document.body.appendChild(container);
+            }
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span style="white-space:pre-line">${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => { toast.style.opacity='0'; toast.style.transition='opacity 0.4s'; setTimeout(() => toast.remove(), 400); }, 5000);
+        }
+
         // Init
+        connectWebSocket();
         fetchFilters().then(fetchPrices);
         
     </script>
