@@ -12,8 +12,8 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: harvesthub_backend
     ports:
       - "8000:8000"
@@ -24,6 +24,7 @@ services:
     restart: always
     volumes:
       - ./firebase-service-account.json:/app/firebase-service-account.json:ro
+      - ./web_dashboard:/app/web_dashboard:ro
 
   scraper:
     build:
