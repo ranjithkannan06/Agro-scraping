@@ -1,6 +1,8 @@
 import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 import logging
 
@@ -51,10 +53,16 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            # We can process incoming messages if needed
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
+# Serve the web dashboard at /dashboard
+DASHBOARD_PATH = "/app/web_dashboard/index.html"
+
+@app.get("/dashboard")
+async def serve_dashboard():
+    return FileResponse(DASHBOARD_PATH)
+
 @app.get("/")
 async def root():
-    return {"message": "Welcome to HarvestHub API"}
+    return {"message": "Welcome to HarvestHub API — Dashboard at /dashboard"}
