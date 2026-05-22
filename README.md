@@ -1,4 +1,4 @@
-# 🌾 Athanur Agro - Market Price Scraper & Dashboard
+# 🌾 FARMER'S HUB - Market Price Scraper & Dashboard
 
 Welcome to the **Athanur Agro** repository! This project is designed to scrape, store, and display daily agricultural market prices (specifically flowers, vegetables, and other commodities) in Tamilnadu, India.
 
