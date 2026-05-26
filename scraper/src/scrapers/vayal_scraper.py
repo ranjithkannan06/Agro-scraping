@@ -495,9 +495,9 @@ async def scrape_vayal_flowers():
                                             let unit = "Kg";
                                             
                                             if (cells.length >= 6) {
-                                                commodity = cells[1] || cells[0] || "";
-                                                city = cells[3] || cells[2] || "";
-                                                unit = cells[5] || cells[4] || "Kg";
+                                                commodity = cells[0] || "";
+                                                city = cells[2] || "";
+                                                unit = cells[4] || "Kg";
                                             } else if (cells.length >= 2) {
                                                 const nameParts = (cells[0] || "").split(/\\s{2,}/);
                                                 commodity = nameParts[0] || cells[0];
