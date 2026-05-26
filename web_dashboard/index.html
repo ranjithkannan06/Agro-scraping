@@ -3,320 +3,418 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HarvestHub - Market Price</title>
+    <title>Farmer's Hub - Premium Market Dashboard</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Google Fonts: Poppins (matches VayalAgro vibe) -->
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Google Fonts: Inter & Outfit -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Poppins', sans-serif; background-color: #fafafa; }
-        .vayal-btn { background-color: #059669; color: white; transition: background-color 0.2s; }
-        .vayal-btn:hover { background-color: #047857; }
-        .modal { display: none; position: fixed; inset: 0; z-index: 50; background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center; }
-        .modal.active { display: flex; }
-        .modal-content { background: white; padding: 2rem; border-radius: 0.5rem; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
-        /* Toast */
-        #toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999; display: flex; flex-direction: column; gap: 0.75rem; }
-        .toast { background: #1f2937; color: white; padding: 0.85rem 1.25rem; border-radius: 0.6rem; font-size: 0.85rem; max-width: 340px; display: flex; align-items: flex-start; gap: 0.6rem; box-shadow: 0 8px 24px rgba(0,0,0,0.25); animation: slideIn 0.3s ease; }
-        .toast.success { border-left: 4px solid #10b981; }
-        .toast.info    { border-left: 4px solid #3b82f6; }
-        @keyframes slideIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
-        /* Live badge */
-        .live-dot { width:8px; height:8px; border-radius:50%; background:#10b981; display:inline-block; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
-        /* District loading spinner */
-        .district-loading { color: #6b7280; font-size: 0.8rem; padding: 0.5rem 0; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #f8fafc; 
+        }
+        h1, h2, h3, .brand-font {
+            font-family: 'Outfit', sans-serif;
+        }
+        .vayal-gradient {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+        }
+        .live-dot { 
+            width: 8px; 
+            height: 8px; 
+            border-radius: 50%; 
+            display: inline-block; 
+        }
+        .live-dot.active {
+            background: #10b981; 
+            animation: pulse 1.5s infinite; 
+        }
+        .live-dot.offline {
+            background: #9ca3af; 
+        }
+        @keyframes pulse { 
+            0%, 100% { opacity: 1; transform: scale(1); } 
+            50% { opacity: 0.4; transform: scale(1.2); } 
+        }
+        .card-hover {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card-hover:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 20px -8px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+        }
+        .modal { 
+            display: none; 
+            position: fixed; 
+            inset: 0; 
+            z-index: 100; 
+            background-color: rgba(15, 23, 42, 0.6); 
+            align-items: center; 
+            justify-content: center; 
+            backdrop-filter: blur(4px);
+        }
+        .modal.active { 
+            display: flex; 
+        }
+        /* Toast Alert Container */
+        #toast-container { 
+            position: fixed; 
+            bottom: 1.5rem; 
+            right: 1.5rem; 
+            z-index: 999; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 0.75rem; 
+        }
+        .toast { 
+            background: #0f172a; 
+            color: white; 
+            padding: 1rem 1.25rem; 
+            border-radius: 0.75rem; 
+            font-size: 0.875rem; 
+            max-width: 380px; 
+            display: flex; 
+            align-items: flex-start; 
+            gap: 0.75rem; 
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+            animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
+            border-left: 4px solid #10b981;
+        }
+        @keyframes slideIn { 
+            from { opacity: 0; transform: translateY(24px) scale(0.95); } 
+            to { opacity: 1; transform: translateY(0) scale(1); } 
+        }
     </style>
 </head>
-<body class="text-gray-800 antialiased min-h-screen">
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
 
-    <!-- Header / Nav -->
-    <nav class="bg-white shadow-sm py-4 sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 flex justify-between items-center">
-            <div class="flex items-center gap-2">
-                <div class="bg-gradient-to-br from-green-500 to-yellow-400 w-8 h-8 flex items-center justify-center rounded text-white font-bold text-lg leading-none italic">H</div>
-                <h1 class="text-xl font-bold tracking-tight text-gray-800">HARVEST<span class="text-green-600 font-light">HUB™</span></h1>
-            </div>
-            <div class="hidden md:flex items-center gap-6 text-sm font-medium text-gray-600">
-                <a href="#" class="hover:text-green-600 flex items-center gap-1"><span class="text-lg">🔠</span> Categories</a>
-                <a href="#" class="text-green-600 border-b-2 border-green-600 pb-1 flex items-center gap-1"><span class="text-lg">📈</span> Market Price</a>
-            </div>
-            <!-- Live Status Badge + Language Toggle -->
+    <!-- Reconnecting Banner -->
+    <div id="reconnectingBanner" class="hidden w-full bg-amber-500 text-white text-center py-2 px-4 text-sm font-semibold tracking-wide shadow-md transition-all duration-300">
+        ⚠️ Connection lost. Reconnecting to real-time feed in <span id="reconnectTimer">1</span>s...
+    </div>
+
+    <!-- Navigation Header -->
+    <nav class="bg-white border-b border-slate-100 py-4 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
             <div class="flex items-center gap-3">
-                <div id="liveStatusBadge" class="hidden items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-                    <span class="live-dot"></span>
-                    <span id="liveStatusText">0 districts today</span>
+                <div class="vayal-gradient w-10 h-10 flex items-center justify-center rounded-xl text-white font-extrabold text-xl leading-none italic shadow-md shadow-emerald-200">F</div>
+                <div>
+                    <h1 class="text-xl font-extrabold tracking-tight text-slate-900 leading-none">FARMER'S<span class="text-emerald-600 font-medium">HUB</span></h1>
+                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Agricultural price engine</span>
                 </div>
-                <button id="langToggle" onclick="toggleLanguage()" class="px-4 py-1.5 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50 flex items-center gap-2 transition-colors">
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <!-- Status Badge -->
+                <div id="connectionBadge" class="flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 transition-all duration-300">
+                    <span id="connectionBadgeDot" class="live-dot offline"></span>
+                    <span id="connectionBadgeText">Offline</span>
+                </div>
+                
+                <button id="langToggle" onclick="toggleLanguage()" class="px-4 py-2 border border-slate-200 rounded-lg text-sm font-semibold hover:bg-slate-50 flex items-center gap-2 transition-all duration-200">
                     🌐 English
                 </button>
             </div>
         </div>
     </nav>
 
-    <main class="max-w-7xl mx-auto px-4 py-8">
-        <!-- Hero Text -->
-        <p class="text-sm text-gray-500 mb-8 leading-relaxed md:text-center max-w-4xl mx-auto">
-            <span id="descEn">HarvestHub provides information on daily cost updates for fresh commodities. Our listings help to stay updated on market trends and discover the matching deals. Our price today covers all popular varieties even you can monitor the market rate history to identify the best times to buy.</span>
-            <span id="descTa" class="hidden">ஹார்வெஸ்ட் ஹப் புதிய பொருட்களுக்கான தினசரி விலை புதுப்பிப்புகளை வழங்குகிறது. சந்தை நிலவரங்களை உடனுக்குடன் அறியவும், சிறந்த சலுகைகளை கண்டறியவும் எங்கள் தளம் உதவுகிறது.</span>
-        </p>
-
-        <!-- Filters (Exact Replica) -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 bg-white p-6 rounded shadow-sm border border-gray-200 mb-8 items-end">
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Categories</label>
-                            <div class="relative">
-                                <span class="absolute left-3 top-3 text-green-600">🌿</span>
-                                <select id="categoryInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded text-gray-400 cursor-not-allowed appearance-none" disabled>
-                                    <option value="Flower" selected>Flowers</option>
-                                </select>
-                            </div>
-                        </div>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Districts</label>
-                <div class="relative">
-                    <span class="absolute left-3 top-3 text-green-600">📍</span>
-                    <select id="districtInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600 appearance-none" onchange="updateCities()">
-                        <!-- Populated dynamically from API -->
-                    </select>
-                </div>
+    <!-- Main Content Container -->
+    <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        
+        <!-- Welcome Hero Info -->
+        <div class="bg-white rounded-2xl p-6 sm:p-8 border border-slate-100 shadow-sm mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div class="max-w-3xl">
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-2">Live Agricultural Price Board</h2>
+                <p class="text-slate-500 text-sm leading-relaxed">
+                    <span id="descEn">Farmer's Hub connects you with absolute real-time flower and vegetable wholesale pricing from regional markets. Fully complete records are updated automatically by our background scraping agents. Use the tools below to trace historical trends.</span>
+                    <span id="descTa" class="hidden">பார்மர்ஸ் ஹப் உங்களுக்கு பிராந்திய சந்தைகளின் மலர்கள் மற்றும் காய்கறி மொத்த விலையை உடனுக்குடன் வழங்குகிறது. எங்களின் பின்னணி ஸ்கிராப்பிங் முகவர்கள் மூலம் முழுமையான தரவுகள் தானாகவே புதுப்பிக்கப்படும்.</span>
+                </p>
             </div>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">City</label>
-                <div class="relative">
-                    <span class="absolute left-3 top-3 text-green-600">🏙️</span>
-                    <select id="cityInput" class="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600 appearance-none">
-                        <!-- Populated dynamically -->
-                    </select>
+            
+            <!-- Quick stats -->
+            <div class="bg-emerald-50 border border-emerald-100 p-4 rounded-xl flex items-center gap-4 min-w-[200px]">
+                <div class="bg-emerald-500 text-white p-3 rounded-lg text-2xl leading-none">📊</div>
+                <div>
+                    <span class="text-xs text-emerald-700 font-bold uppercase tracking-wider" id="statLabel">Database Status</span>
+                    <p class="text-slate-900 font-bold text-lg leading-none mt-1" id="scrapedTodayCount">Loading data...</p>
                 </div>
-            </div>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Date</label>
-                <div class="relative">
-                    <input type="date" id="dateInput" class="w-full px-4 py-2.5 bg-white border border-gray-300 rounded focus:outline-none focus:border-green-600">
-                </div>
-            </div>
-            <div>
-                <button onclick="fetchPrices()" class="w-full py-2.5 vayal-btn rounded font-medium shadow flex justify-center items-center gap-2">
-                    Search
-                </button>
             </div>
         </div>
 
-        <!-- Title -->
-        <h2 id="tableTitle" class="text-2xl font-bold text-center text-[#1e3a8a] mb-8">Trend of Market Price Today</h2>
-        
-        <!-- Error / Loading Display -->
-        <div id="statusMessage" class="text-center font-semibold text-red-500 mb-4 hidden"></div>
+        <!-- Filter Form -->
+        <div class="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm mb-8">
+            <h3 class="text-base font-bold text-slate-900 mb-4" id="filterTitle">Apply Market Filters</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 items-end">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Category</label>
+                    <div class="relative">
+                        <select id="categoryInput" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 appearance-none font-medium text-slate-700">
+                            <option value="">All Categories</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">District</label>
+                    <div class="relative">
+                        <select id="districtInput" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 appearance-none font-medium text-slate-700" onchange="updateCities()">
+                            <!-- Districts dynamic list -->
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">City / Market</label>
+                    <div class="relative">
+                        <select id="cityInput" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 appearance-none font-medium text-slate-700">
+                            <!-- Cities dynamic list -->
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Target Date</label>
+                    <input type="date" id="dateInput" onchange="populateFilters(this.value)" class="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-700">
+                </div>
+                <div>
+                    <button onclick="fetchFilteredPrices()" class="w-full py-2.5 vayal-gradient hover:bg-emerald-600 text-white font-bold rounded-lg shadow-md shadow-emerald-100 flex justify-center items-center gap-2 transition-all duration-200">
+                        🔍 Search Prices
+                    </button>
+                </div>
+            </div>
+        </div>
 
-        <!-- Data Table (Exact Replica) -->
-        <div class="bg-white rounded shadow-sm border border-gray-200 overflow-x-auto w-full">
-            <table class="w-full text-left min-w-[800px]">
-                <thead class="bg-[#f8fafc] text-sm text-gray-600 font-bold border-b border-gray-200">
-                    <tr>
-                        <th class="px-6 py-4">Category</th>
-                        <th class="px-6 py-4">District</th>
-                        <th class="px-6 py-4">City</th>
-                        <th class="px-6 py-4">Price</th>
-                        <th class="px-6 py-4">Units</th>
-                        <th class="px-6 py-4 text-center">History Price</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody" class="divide-y divide-gray-100 text-sm font-medium text-gray-800">
-                    <!-- JS Rows -->
-                </tbody>
-            </table>
+        <!-- Prices Section Header -->
+        <div class="flex justify-between items-center mb-6">
+            <h2 id="sectionTitle" class="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Active Wholesale Rates</h2>
+            <button onclick="loadLatestPrices()" class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1.5 transition-colors">
+                🔄 Sync Latest
+            </button>
+        </div>
+
+        <!-- Error/Loading indicators -->
+        <div id="statusIndicator" class="text-center font-semibold text-rose-500 bg-rose-50 border border-rose-100 p-4 rounded-xl hidden mb-8"></div>
+
+        <!-- Responsive Card Grid -->
+        <div id="priceGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 min-h-[200px]">
+            <!-- Dynamic Price Cards render here via JS -->
         </div>
     </main>
 
-    <!-- History Price Modal (Chart.js) -->
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-100 py-6 mt-12 text-center text-xs text-slate-400 font-medium">
+        © 2026 Farmer's Hub. Dedicated to Premium Agriculture Automation.
+    </footer>
+
+    <!-- History price Trend Modal -->
     <div id="chartModal" class="modal">
-        <div class="modal-content relative rounded-lg m-4 w-full">
-            <button onclick="closeModal()" class="absolute top-4 right-4 text-gray-500 hover:text-red-500 text-3xl font-bold leading-none">&times;</button>
-            <h3 id="modalTitle" class="text-lg sm:text-xl font-bold text-[#1e3a8a] mb-6">History Price of <span id="modalCommodityName"></span></h3>
+        <div class="bg-white rounded-2xl p-6 w-full max-w-2xl mx-4 relative shadow-2xl border border-slate-100">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-rose-500 text-2xl font-bold transition-colors leading-none">&times;</button>
+            <h3 class="text-lg sm:text-xl font-extrabold text-slate-950 mb-1">Price Trend Analysis</h3>
+            <p class="text-xs text-slate-400 font-medium mb-6 uppercase tracking-wider"><span id="modalCommodityName"></span> • <span id="modalMarketName"></span></p>
             
-            <div class="flex justify-between items-center mb-4">
-                <div>
-                    <p class="text-gray-500 text-xs sm:text-sm mb-1" id="modalDateLabel">Price Today</p>
-                    <p class="text-xl sm:text-2xl font-bold text-gray-900" id="modalCurrentPrice">Rs. 0</p>
+            <div class="mb-6 text-center">
+                <div class="bg-emerald-50 border border-emerald-100 p-4 rounded-xl inline-block min-w-[200px]">
+                    <span class="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Market Price</span>
+                    <p class="text-emerald-700 font-extrabold text-2xl mt-1" id="modalPrice">Rs. 0</p>
                 </div>
             </div>
 
-            <!-- Chart Canvas -->
-            <div class="w-full h-[300px] sm:h-[400px]">
+            <!-- Canvas for Chart.js -->
+            <div class="w-full h-[320px] relative">
                 <canvas id="historyChart"></canvas>
             </div>
         </div>
     </div>
 
+    <!-- Script Section -->
     <script>
-        // Use 127.0.0.1 instead of localhost to prevent DNS resolution issues on Windows
         const API_BASE = 'http://127.0.0.1:8000/api';
         
-        // Language State
         let currentLang = 'en';
-        let tamilCache = {}; // Cache to avoid duplicate API calls
+        let allPrices = [];
+        let chartInstance = null;
+        let wsConn = null;
+        let reconnectDelay = 1000; // Exponential backoff starts at 1s
+        let reconnectTimeoutId = null;
+        let reconnectTimerIntervalId = null;
         
-        async function translateToTamil(text) {
-            if (tamilCache[text]) return tamilCache[text];
+        // Cache for Tamil translations
+        let translationCache = {};
+
+        async function translateText(text) {
+            if (!text) return "";
+            if (translationCache[text]) return translationCache[text];
             try {
                 const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ta&dt=t&q=${encodeURIComponent(text)}`);
                 const data = await res.json();
                 const translated = data[0][0][0];
-                tamilCache[text] = translated;
+                translationCache[text] = translated;
                 return translated;
             } catch (e) {
-                return text; // fallback to English on failure
+                return text;
             }
         }
 
         async function toggleLanguage() {
             currentLang = currentLang === 'en' ? 'ta' : 'en';
             const btn = document.getElementById('langToggle');
-            const thElements = document.querySelectorAll('thead th');
             
             if (currentLang === 'ta') {
                 btn.innerHTML = '🌐 தமிழ்';
                 document.getElementById('descEn').classList.add('hidden');
                 document.getElementById('descTa').classList.remove('hidden');
-                document.getElementById('tableTitle').textContent = 'இன்றைய சந்தை விலை நிலவரம்';
-                
-                // Translate headers
-                const taHeaders = ['வகை', 'மாவட்டம்', 'நகரம்', 'விலை', 'அலகு', 'வரலாற்று விலை'];
-                thElements.forEach((th, i) => th.textContent = taHeaders[i]);
+                document.getElementById('filterTitle').textContent = 'சந்தை வடிகட்டிகள்';
+                document.getElementById('sectionTitle').textContent = 'சந்தையிலுள்ள மொத்த விலைகள்';
+                document.getElementById('statLabel').textContent = 'தரவுத்தள நிலை';
             } else {
                 btn.innerHTML = '🌐 English';
                 document.getElementById('descEn').classList.remove('hidden');
                 document.getElementById('descTa').classList.add('hidden');
-                document.getElementById('tableTitle').textContent = 'Trend of Market Price Today';
-                
-                // English headers
-                const enHeaders = ['Category', 'District', 'City', 'Price', 'Units', 'History Price'];
-                thElements.forEach((th, i) => th.textContent = enHeaders[i]);
+                document.getElementById('filterTitle').textContent = 'Apply Market Filters';
+                document.getElementById('sectionTitle').textContent = 'Active Wholesale Rates';
+                document.getElementById('statLabel').textContent = 'Database Status';
             }
-            // Re-render table to update languages
-            if (allPrices.length > 0) {
-                renderTable();
-            }
+            renderGrid();
         }
-        
-        console.log("HarvestHub JS Script started executing!");
 
-        // DOM Elements
+        // Set default filter date to today
         const dateInput = document.getElementById('dateInput');
-        const categoryInput = document.getElementById('categoryInput');
-        const districtInput = document.getElementById('districtInput');
-        const cityInput = document.getElementById('cityInput');
-        const tableBody = document.getElementById('tableBody');
-        const statusMessage = document.getElementById('statusMessage');
-        const modal = document.getElementById('chartModal');
-        
-        let allPrices = [];
-        let chartInstance = null;
-
-        // Set today's date
-        if (dateInput) {
-            dateInput.value = new Date().toISOString().split('T')[0];
-        }
+        dateInput.value = new Date().toISOString().split('T')[0];
 
         function showStatus(msg, isError = false) {
-            statusMessage.textContent = msg;
-            statusMessage.className = `text-center font-semibold mb-4 ${isError ? 'text-red-600' : 'text-blue-600'}`;
-            statusMessage.classList.remove('hidden');
-        }
-        function hideStatus() {
-            statusMessage.classList.add('hidden');
+            const statusIndicator = document.getElementById('statusIndicator');
+            statusIndicator.textContent = msg;
+            if (isError) {
+                statusIndicator.className = "text-center font-semibold text-rose-500 bg-rose-50 border border-rose-100 p-4 rounded-xl mb-8";
+            } else {
+                statusIndicator.className = "text-center font-semibold text-emerald-600 bg-emerald-50 border border-emerald-100 p-4 rounded-xl mb-8";
+            }
+            statusIndicator.classList.remove('hidden');
         }
 
+        function hideStatus() {
+            document.getElementById('statusIndicator').classList.add('hidden');
+        }
+
+        // --- DYNAMIC FILTERS LOOKUPS ---
         async function updateCities() {
-            const district = districtInput.value;
-            cityInput.innerHTML = '';
+            const district = document.getElementById('districtInput').value;
+            const cityInput = document.getElementById('cityInput');
+            cityInput.innerHTML = '<option value="">All Markets</option>';
             
-            if (district) {
-                // Fetch cities for this district from backend
-                try {
-                    const res = await fetch(`${API_BASE}/prices?district=${encodeURIComponent(district)}`);
-                    const data = await res.json();
-                    if (data.status === 'success') {
-                        // Extract unique cities (markets) from the price data
-                        const cities = [...new Set(data.data.map(p => p.market || p.city))].filter(Boolean);
-                        cities.forEach(c => {
-                            const opt = document.createElement('option');
-                            opt.value = c; opt.textContent = c;
-                            cityInput.appendChild(opt);
-                        });
-                        
-                        // If no cities found, fallback to "[District] city"
-                        if (cities.length === 0) {
-                            const opt = document.createElement('option');
-                            const cityName = `${district} city`;
-                            opt.value = cityName;
-                            opt.textContent = cityName;
-                            cityInput.appendChild(opt);
-                        }
-                    }
-                } catch (e) {
-                    console.error("Failed to fetch cities:", e);
+            if (!district) return;
+            
+            try {
+                const res = await fetch(`${API_BASE}/cities?district=${encodeURIComponent(district)}`, { cache: 'no-store' });
+                if (!res.ok) throw new Error();
+                const data = await res.json();
+                if (data.status === 'success') {
+                    data.data.forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = c; opt.textContent = c;
+                        cityInput.appendChild(opt);
+                    });
                 }
+            } catch (err) {
+                console.warn("Could not load markets for district. Adding fallback.");
+                const opt = document.createElement('option');
+                opt.value = `${district} city`;
+                opt.textContent = `${district} city`;
+                cityInput.appendChild(opt);
             }
         }
 
-        // --- DYNAMIC DISTRICT DROPDOWN (date-aware) ---
-        async function fetchDistrictsForDate(selectedDate) {
-            districtInput.innerHTML = '<option disabled>Loading districts...</option>';
+        async function populateCategories() {
+            const categoryInput = document.getElementById('categoryInput');
+            categoryInput.innerHTML = '<option value="">All Categories</option>';
             try {
-                const url = selectedDate
-                    ? `${API_BASE}/districts/today?date=${selectedDate}`
-                    : `${API_BASE}/districts/today`;
-                const res = await fetch(url);
+                const res = await fetch(`${API_BASE}/categories`, { cache: 'no-store' });
                 const data = await res.json();
-                districtInput.innerHTML = '';
+                if (data.status === 'success' && data.data.length > 0) {
+                    data.data.forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = c; opt.textContent = c;
+                        categoryInput.appendChild(opt);
+                    });
+                }
+            } catch (err) {
+                console.error("Categories loading error:", err);
+            }
+        }
+
+        async function populateFilters(dateStr) {
+            const districtInput = document.getElementById('districtInput');
+            districtInput.innerHTML = '<option value="">All Districts</option>';
+            
+            try {
+                // Fetch districts available for today/selected date
+                const url = dateStr ? `${API_BASE}/districts/today?date=${dateStr}` : `${API_BASE}/districts/today`;
+                const res = await fetch(url, { cache: 'no-store' });
+                const data = await res.json();
+                
                 if (data.status === 'success' && data.data.length > 0) {
                     data.data.forEach(d => {
                         const opt = document.createElement('option');
                         opt.value = d; opt.textContent = d;
                         districtInput.appendChild(opt);
                     });
-                    // Update live badge
-                    const badge = document.getElementById('liveStatusBadge');
-                    document.getElementById('liveStatusText').textContent = `${data.count} district${data.count !== 1 ? 's' : ''} today`;
-                    badge.classList.remove('hidden');
-                    badge.classList.add('flex');
+                    document.getElementById('scrapedTodayCount').textContent = `${data.count} Districts Scraped`;
                 } else {
-                    // Fallback: load all-time districts
-                    const fallback = await fetch(`${API_BASE}/districts`);
-                    const fdata = await fallback.json();
-                    if (fdata.status === 'success') {
-                        fdata.data.sort().forEach(d => {
+                    // Fallback to all historical districts
+                    const fallback = await fetch(`${API_BASE}/districts`, { cache: 'no-store' });
+                    const fData = await fallback.json();
+                    if (fData.status === 'success') {
+                        fData.data.sort().forEach(d => {
                             const opt = document.createElement('option');
-                            opt.value = d; opt.textContent = `${d} (historical)`;
+                            opt.value = d; opt.textContent = d;
                             districtInput.appendChild(opt);
                         });
                     }
-                    showToast('info', '📋 No districts scraped yet today. Showing historical data.');
+                    document.getElementById('scrapedTodayCount').textContent = "No runs today";
                 }
             } catch (err) {
-                console.error('District fetch error:', err);
-                districtInput.innerHTML = '<option value="">All Districts</option>';
+                console.error("Filter loading error:", err);
             }
             await updateCities();
         }
 
-        async function fetchFilters() {
-            const today = new Date().toISOString().split('T')[0];
-            await fetchDistrictsForDate(today);
+        // --- LOAD PRICES ---
+        async function loadLatestPrices() {
+            hideStatus();
+            const grid = document.getElementById('priceGrid');
+            grid.innerHTML = '<div class="col-span-full py-12 text-center text-slate-400 font-semibold flex flex-col justify-center items-center gap-2"><span>🔄</span> Refreshing wholesale rate sheets...</div>';
+            
+            try {
+                // Fetch latest dynamic prices with cache-busting
+                const res = await fetch(`${API_BASE}/prices/latest`, { cache: 'no-store' });
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        showStatus("No price files found in the database. Running your scraper first will seed local MongoDB.", true);
+                        grid.innerHTML = '';
+                        return;
+                    }
+                    throw new Error("HTTP error: " + res.status);
+                }
+                const data = await res.json();
+                if (data.status === 'success') {
+                    allPrices = data.data;
+                    renderGrid();
+                }
+            } catch (err) {
+                showStatus("Failed to contact the backend engine. Please check if uvicorn is running on http://127.0.0.1:8000", true);
+                grid.innerHTML = '';
+            }
         }
 
-        async function fetchPrices() {
-            tableBody.innerHTML = '';
-            showStatus("Loading data from backend...");
-            
-            const category = categoryInput.value;
-            const district = districtInput.value;
-            const city = cityInput.value;
+        async function fetchFilteredPrices() {
+            hideStatus();
+            const category = document.getElementById('categoryInput').value;
+            const district = document.getElementById('districtInput').value;
+            const city = document.getElementById('cityInput').value;
             const date = dateInput.value;
+            
+            const grid = document.getElementById('priceGrid');
+            grid.innerHTML = '<div class="col-span-full py-12 text-center text-slate-400 font-semibold flex flex-col justify-center items-center gap-2"><span>🔍</span> Querying database indices...</div>';
             
             let url = `${API_BASE}/prices?`;
             if (category) url += `category=${encodeURIComponent(category)}&`;
@@ -325,225 +423,338 @@
             if (date) url += `date=${encodeURIComponent(date)}&`;
             
             try {
-                const res = await fetch(url);
-                if (!res.ok) throw new Error("Backend server refused connection");
-                
+                const res = await fetch(url, { cache: 'no-store' });
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        allPrices = [];
+                        renderGrid();
+                        return;
+                    }
+                    throw new Error();
+                }
                 const data = await res.json();
                 if (data.status === 'success') {
                     allPrices = data.data;
-                    renderTable();
-                } else {
-                    showStatus("Error: Invalid response format from API", true);
+                    renderGrid();
                 }
             } catch (err) {
-                console.error("Prices Error:", err);
-                showStatus("Failed to load data. Please ensure your backend is running on http://127.0.0.1:8000.", true);
+                showStatus("Database query failed. Ensure backend API is active.", true);
+                grid.innerHTML = '';
             }
         }
 
-        function renderTable() {
-            hideStatus();
-            tableBody.innerHTML = '';
+        // --- RELATIVE TIME ENGINE ---
+        function getRelativeTimeSpan(isoString) {
+            if (!isoString) return { text: "Unknown", colorClass: "text-slate-400 bg-slate-100" };
             
-            if (allPrices.length === 0) {
-                const msg = currentLang === 'ta' ? "தேர்ந்தெடுக்கப்பட்ட வடிகட்டிகளுக்கு சந்தை விலைகள் எதுவும் கிடைக்கவில்லை." : "No market prices found for the selected filters.";
-                showStatus(msg);
+            const scrapedDate = new Date(isoString);
+            const now = new Date();
+            const diffMs = now - scrapedDate;
+            const diffMin = Math.floor(diffMs / 60000);
+            
+            if (isNaN(scrapedDate.getTime())) {
+                return { text: "Invalid date", colorClass: "text-slate-400 bg-slate-100" };
+            }
+            
+            if (diffMin < 1) {
+                return { text: "Last updated: Just now", colorClass: "text-emerald-700 bg-emerald-50 border-emerald-100" };
+            } else if (diffMin < 30) {
+                const text = currentLang === 'ta' ? `கடைசியாக புதுப்பிக்கப்பட்டது: ${diffMin} நிமிடங்களுக்கு முன்` : `Last updated: ${diffMin}m ago`;
+                return { text: text, colorClass: "text-emerald-700 bg-emerald-50 border-emerald-100" };
+            } else if (diffMin < 120) {
+                // Older than 30 minutes -> AMBER
+                const hrs = Math.floor(diffMin / 60);
+                const mins = diffMin % 60;
+                const text = currentLang === 'ta' ? `கடைசியாக புதுப்பிக்கப்பட்டது: ${diffMin} நிமிடங்களுக்கு முன் (பழையது)` : `Last updated: ${diffMin}m ago`;
+                return { text: text, colorClass: "text-amber-700 bg-amber-50 border-amber-200" };
+            } else {
+                // Older than 2 hours -> RED
+                const hrs = Math.floor(diffMin / 60);
+                const days = Math.floor(hrs / 24);
+                let text = "";
+                if (days > 0) {
+                    text = currentLang === 'ta' ? `கடைசியாக புதுப்பிக்கப்பட்டது: ${days} நாட்களுக்கு முன்` : `Last updated: ${days}d ago`;
+                } else {
+                    text = currentLang === 'ta' ? `கடைசியாக புதுப்பிக்கப்பட்டது: ${hrs} மணிநேரத்திற்கு முன்` : `Last updated: ${hrs}h ago`;
+                }
+                return { text: text, colorClass: "text-rose-700 bg-rose-50 border-rose-200" };
+            }
+        }
+
+        // --- RENDER DYNAMIC CARD GRID ---
+        function renderGrid() {
+            hideStatus();
+            const grid = document.getElementById('priceGrid');
+            grid.innerHTML = '';
+            
+            if (!allPrices || allPrices.length === 0) {
+                const text = currentLang === 'ta' ? 'வடிகட்டப்பட்ட விவரங்களுக்கு விலைகள் எதுவும் இல்லை.' : 'No market records match the active database indexes. Run the scraper or modify filters.';
+                grid.innerHTML = `<div class="col-span-full py-16 text-center text-slate-400 font-semibold flex flex-col justify-center items-center gap-2"><span>📂</span> ${text}</div>`;
                 return;
             }
             
             allPrices.forEach(p => {
-                const tr = document.createElement('tr');
-                tr.className = "hover:bg-gray-50 transition-colors";
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-2xl border border-slate-100 p-6 card-hover shadow-sm flex flex-col justify-between relative overflow-hidden min-w-[280px]";
                 
-                // Set placeholders or english defaults
-                const catSpanId = `cat-${Math.random().toString(36).substr(2, 9)}`;
-                const commSpanId = `comm-${Math.random().toString(36).substr(2, 9)}`;
-                const distSpanId = `dist-${Math.random().toString(36).substr(2, 9)}`;
-                const citySpanId = `city-${Math.random().toString(36).substr(2, 9)}`;
-                const btnText = currentLang === 'ta' ? '📈 காண்க' : '📈 View';
+                const cardId = `card-${Math.random().toString(36).substr(2, 9)}`;
+                const commId = `${cardId}-comm`;
+                const marketId = `${cardId}-market`;
+                const timeSpan = getRelativeTimeSpan(p.scraped_at);
                 
-                tr.innerHTML = `
-                    <td class="px-6 py-5 whitespace-nowrap">
-                        <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800" id="${catSpanId}">
-                            ${p.category}
-                        </span>
-                    </td>
-                    <td class="px-6 py-5 flex items-center gap-3 min-w-[200px]">
-                        <span class="text-xl">🧺</span>
-                        <span id="${commSpanId}" class="font-semibold text-gray-900">${p.commodity}</span>
-                    </td>
-                    <td class="px-6 py-5" id="${distSpanId}">${p.district || 'N/A'}</td>
-                    <td class="px-6 py-5" id="${citySpanId}">${p.market || p.city || 'N/A'}</td>
-                    <td class="px-6 py-5 text-[#1e3a8a] font-bold whitespace-nowrap">Rs. ${p.price}</td>
-                    <td class="px-6 py-5 text-gray-500">${p.unit || 'Kg'}</td>
-                    <td class="px-6 py-5 text-center">
-                        <button onclick="openHistoryChart('${p.commodity.replace(/'/g, "\\'")}', '${p.category.replace(/'/g, "\\'")}')" class="vayal-btn px-4 py-1.5 rounded text-sm font-medium flex items-center justify-center gap-1 shadow-sm mx-auto">
-                            ${btnText}
+                const histBtnText = currentLang === 'ta' ? '📈 வரலாறு காண்க' : '📈 Price History';
+                
+                card.innerHTML = `
+                    <div>
+                        <!-- Header badge -->
+                        <div class="flex justify-between items-start mb-4">
+                            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase tracking-wide">
+                                ${p.category || 'Unknown'}
+                            </span>
+                            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${timeSpan.colorClass}" id="${cardId}-badge">
+                                ${timeSpan.text}
+                            </span>
+                        </div>
+                        
+                        <!-- Commodity Name -->
+                        <div class="flex items-center gap-2.5 mb-3">
+                            <span class="text-2xl">🌿</span>
+                            <h4 id="${commId}" class="brand-font text-lg font-bold text-slate-900 leading-tight">${p.commodity_name}</h4>
+                        </div>
+                        
+                        <!-- Market details -->
+                        <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-4 flex items-center gap-1">
+                            📍 <span id="${marketId}">${p.market_name} (${p.district || 'Tamilnadu'})</span>
+                        </p>
+                    </div>
+
+                    <div>
+                        <!-- Price Rate Display -->
+                        <div class="flex items-baseline justify-center gap-1.5 py-4 border-t border-b border-slate-50 mb-4 bg-slate-50/50 rounded-xl">
+                            <span class="text-slate-400 text-xs font-bold uppercase tracking-wider">Rate:</span>
+                            <span class="text-emerald-700 font-extrabold text-2xl">₹${p.price || p.price_modal}</span>
+                            <span class="text-slate-500 text-xs font-semibold">/ ${p.unit || 'Kg'}</span>
+                        </div>
+
+                        <!-- Footer actions -->
+                        <div class="flex justify-between items-center text-xs text-slate-400 mb-4">
+                            <span>Unit: <strong class="text-slate-600 font-semibold">${p.unit || 'Kg'}</strong></span>
+                            <span>Date: <strong class="text-slate-600 font-semibold">${p.date_scraped}</strong></span>
+                        </div>
+                        
+                        <button onclick="openHistoryChart('${p.commodity_name.replace(/'/g, "\\'")}', '${p.category.replace(/'/g, "\\'")}', '${p.market_name.replace(/'/g, "\\'")}', '${p.price || p.price_modal}')" 
+                                class="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 font-semibold rounded-lg text-xs tracking-wide shadow-sm flex items-center justify-center gap-1 transition-colors">
+                            ${histBtnText}
                         </button>
-                    </td>
+                    </div>
                 `;
-                tableBody.appendChild(tr);
                 
-                // Lazily translate if needed
+                grid.appendChild(card);
+                
+                // Keep record data elements mapped
+                card.dataset.scrapedAt = p.scraped_at;
+                card.dataset.badgeId = `${cardId}-badge`;
+                
+                // Lazily translate to Tamil if needed
                 if (currentLang === 'ta') {
-                    translateToTamil(p.category).then(t => document.getElementById(catSpanId).textContent = t);
-                    translateToTamil(p.commodity).then(t => document.getElementById(commSpanId).textContent = t);
-                    if (p.district) translateToTamil(p.district).then(t => document.getElementById(distSpanId).textContent = t);
-                    const city = p.market || p.city;
-                    if (city) translateToTamil(city).then(t => document.getElementById(citySpanId).textContent = t);
+                    translateText(p.commodity_name).then(t => document.getElementById(commId).textContent = t);
+                    translateText(p.market_name).then(t => document.getElementById(marketId).textContent = `${t} (${p.district || 'தமிழ்நாடு'})`);
                 }
             });
         }
 
-        // --- CHART JS MODAL LOGIC ---
-        
-        function closeModal() {
-            modal.classList.remove('active');
+        // Loop to dynamically update Relative Timestamps on the UI every 10 seconds
+        setInterval(() => {
+            const cards = document.querySelectorAll('#priceGrid > div');
+            cards.forEach(card => {
+                const scrapedAt = card.dataset.scrapedAt;
+                const badgeId = card.dataset.badgeId;
+                const badge = document.getElementById(badgeId);
+                
+                if (scrapedAt && badge) {
+                    const timeSpan = getRelativeTimeSpan(scrapedAt);
+                    badge.textContent = timeSpan.text;
+                    // Reset class to include correct color codes
+                    badge.className = `px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${timeSpan.colorClass}`;
+                }
+            });
+        }, 10000);
+
+        // --- WEBSOCKET CONNECTION & AUTO-RECONNECT LOGIC ---
+        function triggerWebSocketConnection() {
+            const wsUrl = API_BASE.replace('http', 'ws').replace('/api', '') + '/ws/prices';
+            const badge = document.getElementById('connectionBadge');
+            const dot = document.getElementById('connectionBadgeDot');
+            const text = document.getElementById('connectionBadgeText');
+            const banner = document.getElementById('reconnectingBanner');
+            
+            console.log(`Connecting to WebSocket at ${wsUrl}...`);
+            wsConn = new WebSocket(wsUrl);
+            
+            wsConn.onopen = () => {
+                console.log('✅ WebSocket Connection established successfully.');
+                reconnectDelay = 1000; // Reset exponential delay on success
+                
+                // Clear any running reconnection intervals
+                if (reconnectTimeoutId) clearTimeout(reconnectTimeoutId);
+                if (reconnectTimerIntervalId) clearInterval(reconnectTimerIntervalId);
+                
+                banner.classList.add('hidden');
+                
+                // Mark dot green and pulsating
+                dot.className = "live-dot active";
+                text.textContent = "Live";
+                badge.className = "flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 transition-all duration-300";
+            };
+            
+            wsConn.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.event === 'scraper_update') {
+                        const dists = msg.districts_updated || [];
+                        showToast(
+                            `🌿 Scraped ${msg.new_records} new crop records!\n` +
+                            `Districts: ${dists.join(', ')}`
+                        );
+                        // Refresh display
+                        loadLatestPrices();
+                        // Populate filter dates
+                        const today = new Date().toISOString().split('T')[0];
+                        if (dateInput.value === today) {
+                            populateFilters(today);
+                        }
+                    }
+                } catch (e) {
+                    console.error("WS Message parse failed:", e);
+                }
+            };
+            
+            wsConn.onclose = () => {
+                console.warn('❌ WebSocket connection closed. Initializing reconnect backup...');
+                
+                dot.className = "live-dot offline";
+                text.textContent = "Offline";
+                badge.className = "flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 transition-all duration-300";
+                
+                // Initiate exponential backoff timer
+                banner.classList.remove('hidden');
+                let count = Math.ceil(reconnectDelay / 1000);
+                document.getElementById('reconnectTimer').textContent = count;
+                
+                if (reconnectTimerIntervalId) clearInterval(reconnectTimerIntervalId);
+                reconnectTimerIntervalId = setInterval(() => {
+                    count--;
+                    if (count < 0) count = 0;
+                    document.getElementById('reconnectTimer').textContent = count;
+                }, 1000);
+                
+                if (reconnectTimeoutId) clearTimeout(reconnectTimeoutId);
+                reconnectTimeoutId = setTimeout(() => {
+                    // Double delay with a maximum cap of 30 seconds
+                    reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+                    triggerWebSocketConnection();
+                }, reconnectDelay);
+            };
+
+            wsConn.onerror = (err) => {
+                console.error("WebSocket transport error occurred: ", err);
+                wsConn.close();
+            };
         }
 
-        async function openHistoryChart(commodityName, category) {
-            document.getElementById('modalCommodityName').textContent = commodityName;
-            document.getElementById('modalDateLabel').textContent = `Price ${dateInput.value}`;
+        // --- CHART JS MODAL TREND LOGIC ---
+        function closeModal() {
+            document.getElementById('chartModal').classList.remove('active');
+        }
+
+        async function openHistoryChart(commName, cat, marketName, priceVal) {
+            document.getElementById('modalCommodityName').textContent = commName;
+            document.getElementById('modalMarketName').textContent = marketName;
             
-            // Find current price to show in header
-            const currentItem = allPrices.find(p => p.commodity === commodityName);
-            document.getElementById('modalCurrentPrice').textContent = `Rs. ${currentItem ? currentItem.price : '0'}`;
+            document.getElementById('modalPrice').textContent = `₹${priceVal}`;
             
-            modal.classList.add('active');
-            
-            // We need to fetch the last 7 days of data for THIS specific commodity
-            // Because our current endpoint filters by EXACT date, we need to fetch multiple dates or remove date filter
-            // For the dashboard, we'll fetch WITHOUT date filter, but WITH category filter, and filter the commodity locally.
+            document.getElementById('chartModal').classList.add('active');
             
             try {
-                let historyUrl = `${API_BASE}/prices?category=${encodeURIComponent(category || 'Flower')}`;
-                // Optional: also filter by district to be precise
-                if (districtInput.value) historyUrl += `&district=${encodeURIComponent(districtInput.value)}`;
-                
-                const res = await fetch(historyUrl);
+                // Fetch dynamic crop prices
+                const res = await fetch(`${API_BASE}/prices?commodity=${encodeURIComponent(commName)}&city=${encodeURIComponent(marketName)}`, { cache: 'no-store' });
                 const data = await res.json();
                 
                 if (data.status === 'success') {
-                    // Filter down to just this commodity and sort by date ascending (oldest to newest)
-                    const commodityHistory = data.data
-                        .filter(p => p.commodity === commodityName)
-                        .sort((a, b) => new Date(a.date) - new Date(b.date));
-                        
-                    // Extract labels (dates) and data points (prices)
-                    const labels = commodityHistory.map(p => p.date.split('-').reverse().join('/')); // DD/MM/YYYY
-                    const pricePoints = commodityHistory.map(p => parseFloat(p.price));
+                    const history = data.data.sort((a, b) => new Date(a.date_scraped) - new Date(b.date_scraped));
                     
-                    renderChart(labels, pricePoints);
+                    const labels = history.map(h => h.date_scraped.split('-').reverse().slice(0, 2).join('/')); // DD/MM
+                    const pricePoints = history.map(h => parseFloat(h.price || h.price_modal || 0));
+                    
+                    renderChartTimeline(labels, pricePoints);
                 }
             } catch (err) {
-                console.error("Failed to fetch history:", err);
+                console.error("Failed to load timeline chart points: ", err);
             }
         }
 
-        function renderChart(labels, dataPoints) {
+        function renderChartTimeline(labels, priceData) {
             const ctx = document.getElementById('historyChart').getContext('2d');
             
-            // Destroy existing chart instance to prevent overlaps
             if (chartInstance) {
                 chartInstance.destroy();
             }
 
-            // VayalAgro Green Gradient
-            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-            gradient.addColorStop(0, 'rgba(16, 185, 129, 0.4)'); // Emerald-500 fading out
+            const gradient = ctx.createLinearGradient(0, 0, 0, 320);
+            gradient.addColorStop(0, 'rgba(16, 185, 129, 0.25)'); 
             gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
 
             chartInstance = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
-                    datasets: [{
-                        label: 'Price (Rs)',
-                        data: dataPoints,
-                        borderColor: '#059669', // Emerald 600
-                        backgroundColor: gradient,
-                        borderWidth: 2,
-                        pointBackgroundColor: '#059669',
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        fill: true,
-                        tension: 0.4 // Creates the smooth curves
-                    }]
+                    datasets: [
+                        {
+                            label: 'Market Price Rate (₹)',
+                            data: priceData,
+                            borderColor: '#059669',
+                            backgroundColor: gradient,
+                            borderWidth: 3,
+                            pointBackgroundColor: '#059669',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2,
+                            pointRadius: 4,
+                            fill: true,
+                            tension: 0.4
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: false },
+                        legend: { 
+                            position: 'top',
+                            labels: { font: { family: 'Inter', weight: 'bold', size: 10 } }
+                        },
                         tooltip: {
-                            backgroundColor: '#1f2937',
+                            backgroundColor: '#0f172a',
                             padding: 12,
-                            titleFont: { size: 14, family: 'Poppins' },
-                            bodyFont: { size: 14, family: 'Poppins', weight: 'bold' },
-                            displayColors: false,
-                            callbacks: {
-                                label: function(context) {
-                                    return `Rs: ${context.parsed.y}`;
-                                }
-                            }
+                            titleFont: { size: 12, family: 'Outfit', weight: 'bold' },
+                            bodyFont: { size: 12, family: 'Inter' }
                         }
                     },
                     scales: {
                         y: {
-                            beginAtZero: false,
-                            grid: { color: '#f3f4f6', drawBorder: false },
-                            ticks: { font: { family: 'Poppins' }, color: '#6b7280' }
+                            grid: { color: '#f1f5f9' },
+                            ticks: { font: { family: 'Inter', size: 10 } }
                         },
                         x: {
-                            grid: { display: false, drawBorder: false },
-                            ticks: { font: { family: 'Poppins' }, color: '#6b7280' }
+                            grid: { display: false },
+                            ticks: { font: { family: 'Inter', size: 10 } }
                         }
                     }
                 }
             });
         }
 
-        // --- DATE CHANGE: reload districts dynamically ---
-        dateInput.addEventListener('change', async () => {
-            await fetchDistrictsForDate(dateInput.value);
-            fetchPrices();
-        });
-
-        // --- WEBSOCKET: real-time scraper notifications ---
-        function connectWebSocket() {
-            const wsUrl = API_BASE.replace('http', 'ws').replace('/api', '') + '/ws/prices';
-            let ws;
-            try { ws = new WebSocket(wsUrl); } catch(e) { return; }
-            ws.onopen = () => console.log('WS connected');
-            ws.onmessage = (event) => {
-                try {
-                    const msg = JSON.parse(event.data);
-                    if (msg.event === 'scraper_update') {
-                        const districts = msg.districts_updated || [];
-                        showToast('success',
-                            `🌿 New data! ${msg.new_records} records across ${msg.districts_count} district${msg.districts_count !== 1 ? 's' : ''}` +
-                            (districts.length ? `\n${districts.slice(0,3).join(', ')}${districts.length > 3 ? '...' : ''}` : '')
-                        );
-                        // Refresh district dropdown and table for today
-                        const today = new Date().toISOString().split('T')[0];
-                        if (dateInput.value === today) {
-                            fetchDistrictsForDate(today).then(fetchPrices);
-                        }
-                        // Update badge
-                        document.getElementById('liveStatusText').textContent =
-                            `${msg.districts_count} district${msg.districts_count !== 1 ? 's' : ''} today`;
-                        document.getElementById('liveStatusBadge').classList.remove('hidden');
-                        document.getElementById('liveStatusBadge').classList.add('flex');
-                    }
-                } catch(e) {}
-            };
-            ws.onclose = () => setTimeout(connectWebSocket, 5000); // auto-reconnect
-        }
-
-        // --- TOAST NOTIFICATIONS ---
-        function showToast(type, message) {
+        // --- TOAST CONTAINER ALERT ENGINE ---
+        function showToast(message) {
             let container = document.getElementById('toast-container');
             if (!container) {
                 container = document.createElement('div');
@@ -551,16 +762,39 @@
                 document.body.appendChild(container);
             }
             const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            toast.innerHTML = `<span style="white-space:pre-line">${message}</span>`;
+            toast.className = 'toast';
+            toast.innerHTML = `
+                <span class="text-xl">🌿</span>
+                <div>
+                    <strong class="block font-bold">Scraper Notification</strong>
+                    <span class="text-xs text-slate-300 mt-1 block leading-normal whitespace-pre-line">${message}</span>
+                </div>
+            `;
             container.appendChild(toast);
-            setTimeout(() => { toast.style.opacity='0'; toast.style.transition='opacity 0.4s'; setTimeout(() => toast.remove(), 400); }, 5000);
+            
+            // Auto fadeout after 6 seconds
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(12px) scale(0.95)';
+                toast.style.transition = 'all 0.4s ease';
+                setTimeout(() => toast.remove(), 400);
+            }, 6000);
         }
 
-        // Init
-        connectWebSocket();
-        fetchFilters().then(fetchPrices);
-        
+        // --- INITIALIZATION GATE ---
+        window.addEventListener('DOMContentLoaded', () => {
+            // 1. Trigger cache-busted REST loading immediately on page load
+            loadLatestPrices();
+            
+            // 2. Load district search filters and categories
+            const today = new Date().toISOString().split('T')[0];
+            populateFilters(today);
+            populateCategories();
+            
+            // 3. Fire WebSocket trigger
+            triggerWebSocketConnection();
+        });
+
     </script>
 </body>
 </html>
