@@ -385,8 +385,26 @@ async def scrape_vayal_flowers():
                 ]
                 
                 for cat in categories_to_run:
-                    logger.info(f"Selecting '{cat}' category in dropdown...")
+                    logger.info(f"Navigating to clean base page to scan districts for category '{cat}'...")
+                    await robust_action(page, "goto", base_url)
+                    await page.wait_for_timeout(3000)
                     
+                    # Wait for Category dropdown options to populate dynamically
+                    category_loaded = False
+                    for _ in range(20):
+                        options_len = await page.evaluate('''() => {
+                            const select = Array.from(document.querySelectorAll("select")).find(s => s.options[0]?.text.toLowerCase().includes("category"));
+                            return select ? select.options.length : 0;
+                        }''')
+                        if options_len > 1:
+                            category_loaded = True
+                            break
+                        await page.wait_for_timeout(500)
+                    
+                    if not category_loaded:
+                        logger.warning(f"Category options failed to load for '{cat}'. Skipping.")
+                        continue
+                        
                     # Select Category option
                     cat_selected = await page.evaluate('''(c) => {
                         const select = Array.from(document.querySelectorAll("select")).find(s => s.options[0]?.text.toLowerCase().includes("category"));
@@ -405,8 +423,22 @@ async def scrape_vayal_flowers():
                         logger.warning(f"Category '{cat}' not found in dropdown. Skipping.")
                         continue
                     
-                    # Wait 3 seconds for the district dropdown to be enabled and loaded
-                    await page.wait_for_timeout(3000)
+                    # Wait for district options to load (more than 1 option in District dropdown)
+                    logger.info(f"Waiting for District dropdown to populate for category '{cat}'...")
+                    district_loaded = False
+                    for _ in range(20):
+                        dist_len = await page.evaluate('''() => {
+                            const select = Array.from(document.querySelectorAll("select")).find(s => s.options[0]?.text.toLowerCase().includes("district"));
+                            return select ? select.options.length : 0;
+                        }''')
+                        if dist_len > 1:
+                            district_loaded = True
+                            break
+                        await page.wait_for_timeout(500)
+                    
+                    if not district_loaded:
+                        logger.warning(f"District options failed to load for Category '{cat}'. Skipping.")
+                        continue
                     
                     # Fetch districts loaded for this category
                     districts = await page.evaluate('''() => {
@@ -419,7 +451,25 @@ async def scrape_vayal_flowers():
                     
                     for dist in districts:
                         try:
-                            logger.info(f"Form execution: Category={cat}, District={dist}")
+                            # Return to clean base_url for each district form execution to avoid results page component state issues
+                            logger.info(f"Form execution: Category={cat}, District={dist}. Navigating to base page...")
+                            await robust_action(page, "goto", base_url)
+                            await page.wait_for_timeout(3000)
+                            
+                            # Select Category again on clean page
+                            await page.evaluate('''(c) => {
+                                const select = Array.from(document.querySelectorAll("select")).find(s => s.options[0]?.text.toLowerCase().includes("category"));
+                                if (select) {
+                                    const opt = Array.from(select.options).find(o => o.text.trim().toLowerCase() === c.toLowerCase());
+                                    if (opt) {
+                                        select.value = opt.value;
+                                        select.dispatchEvent(new Event("change", { bubbles: true }));
+                                    }
+                                }
+                            }''', cat)
+                            
+                            # Wait for district options to load
+                            await page.wait_for_timeout(2000)
                             
                             # Select District
                             await page.evaluate('''(d) => {
@@ -435,7 +485,23 @@ async def scrape_vayal_flowers():
                             
                             # Wait for City dropdown to load/enable
                             logger.info("Waiting for City dropdown to populate...")
-                            await page.wait_for_timeout(2000)
+                            city_loaded = False
+                            for _ in range(20): # Poll up to 10 seconds
+                                city_len = await page.evaluate('''() => {
+                                    const select = Array.from(document.querySelectorAll("select")).find(s => {
+                                        const firstOptText = s.options[0]?.text.toLowerCase() || "";
+                                        return !firstOptText.includes("category") && 
+                                               !firstOptText.includes("district") && 
+                                               firstOptText !== "en" && 
+                                               firstOptText !== "tn" && 
+                                               (firstOptText.includes("all") || firstOptText.includes("city") || firstOptText.includes("market") || Array.from(s.options).some(o => o.value === "0"));
+                                    });
+                                    return select ? select.options.length : 0;
+                                }''')
+                                if city_len > 1:
+                                    city_loaded = True
+                                    break
+                                await page.wait_for_timeout(500)
                             
                             await page.evaluate('''() => {
                                 const select = Array.from(document.querySelectorAll("select")).find(s => {
