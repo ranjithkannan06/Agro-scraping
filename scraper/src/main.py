@@ -1,83 +1,66 @@
 import os
 import asyncio
 import logging
+import sys
+
+# Load environment variables from project root .env file
+try:
+    from dotenv import load_dotenv
+    dotenv_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+    load_dotenv(dotenv_path)
+except ImportError:
+    pass
+
+# Allow Windows event loop compatibility immediately on import
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from scrapers.vayal_scraper import scrape_vayal_flowers
-from database import Database
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("scheduler.log", encoding="utf-8")
+    ]
+)
+logger = logging.getLogger("scheduler")
 
 async def scheduled_job():
-    logger.info("Starting scheduled scraping job for flower prices...")
+    logger.info("=============================================================")
+    logger.info("Starting scheduled scraping and synchronization job...")
+    logger.info("=============================================================")
     try:
-        # We will use the database module to insert
-        db = Database()
-        await db.connect()
-        
-        # Run scraper
-        data = await scrape_vayal_flowers()
-        
-        if data:
-            logger.info(f"Successfully scraped {len(data)} items. Inserting into DB...")
-            await db.insert_prices(data)
-            
-            # Sync to Google Sheets
-            try:
-                from google_sheets import GoogleSheetsService
-                sheets = GoogleSheetsService()
-                sheets.append_records(data)
-            except Exception as e:
-                logger.error(f"Failed to sync to Google Sheets: {e}")
-            
-            # Notify the backend to send push notifications + WebSocket broadcast
-            import aiohttp
-            try:
-                # Assuming backend service is accessible as 'backend:8000' in docker-compose
-                async with aiohttp.ClientSession() as session:
-                    # Convert datetimes to string for JSON serialization
-                    serializable_data = [
-                        {k: (v.isoformat() if hasattr(v, 'isoformat') else v) for k, v in item.items()}
-                        for item in data
-                    ]
-                    # 1. Trigger FCM push notifications to mobile
-                    await session.post(
-                        'http://backend:8000/api/internal/notify',
-                        json={'items': serializable_data}
-                    )
-                    # 2. Broadcast WebSocket event to all connected dashboard clients
-                    await session.post(
-                        'http://backend:8000/api/internal/broadcast',
-                        json={'items': serializable_data}
-                    )
-            except Exception as e:
-                logger.error(f"Failed to trigger notifications: {e}")
-                
-        else:
-            logger.warning("No data scraped in this run.")
-            
-        await db.close()
+        # Run the full integrated scraper pipeline (Scrape -> DB Upsert -> Google Sheet Sync -> Backend alert)
+        await scrape_vayal_flowers()
+        logger.info("Scheduled job execution completed successfully.")
     except Exception as e:
-        logger.error(f"Error in scheduled job: {e}")
+        logger.error(f"Error executing scheduled scraper job: {e}")
 
 async def main():
-    logger.info("Starting Scraper Service")
+    logger.info("Starting Farmer's Hub Scraper Scheduler Service...")
     scheduler = AsyncIOScheduler()
     
-    # Add job to run every 5 minutes
+    # Add job to run every 5 minutes as specified by current settings
     scheduler.add_job(scheduled_job, 'interval', minutes=5)
     scheduler.start()
+    logger.info("Scraper scheduler initialized successfully. Interval set to every 5 minutes.")
     
-    # Run immediately on startup
+    # Run immediately on startup to seed the database and spreadsheet
     await scheduled_job()
     
-    # Keep the script running
+    # Keep the script running asynchronously
     while True:
         await asyncio.sleep(3600)
 
 if __name__ == "__main__":
     try:
+        # Allow Windows event loop compatibility
+        if sys.platform == 'win32':
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        logger.info("Scraper Service stopped.")
+        logger.info("Scraper Scheduler Service stopped cleanly.")
