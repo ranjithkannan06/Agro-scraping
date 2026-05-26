@@ -51,8 +51,8 @@ class ConnectionManager:
             "districts_updated": sorted(districts),
             "districts_count": len(districts),
             "sample_item": {
-                "commodity": new_items[0].get("commodity", ""),
-                "price": new_items[0].get("price", ""),
+                "commodity": new_items[0].get("commodity_name", ""),
+                "price": new_items[0].get("price_modal", ""),
                 "district": new_items[0].get("district", "")
             }
         }

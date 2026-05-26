@@ -1,4 +1,9 @@
 import os
+import sys
+
+# Dynamically add backend/src to PYTHONPATH for local development imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -56,8 +61,12 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
-# Serve the web dashboard at /dashboard
-DASHBOARD_PATH = "/app/web_dashboard/index.html"
+# Serve the web dashboard at /dashboard dynamically resolving local vs Docker paths
+local_dashboard = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "web_dashboard", "index.html"))
+if os.path.exists(local_dashboard):
+    DASHBOARD_PATH = local_dashboard
+else:
+    DASHBOARD_PATH = "/app/web_dashboard/index.html"
 
 @app.get("/dashboard")
 async def serve_dashboard():

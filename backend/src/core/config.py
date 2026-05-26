@@ -9,5 +9,11 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 settings = Settings()
+
+import os
+# Auto-detect local host vs Docker environments
+if not os.path.exists('/.dockerenv') and "mongodb://mongodb:" in settings.MONGODB_URL:
+    settings.MONGODB_URL = settings.MONGODB_URL.replace("mongodb://mongodb:", "mongodb://127.0.0.1:")
