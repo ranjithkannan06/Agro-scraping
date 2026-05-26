@@ -305,7 +305,7 @@
             if (!district) return;
             
             try {
-                const res = await fetch(`${API_BASE}/cities?district=${encodeURIComponent(district)}`, { cache: 'no-store' });
+                const res = await fetch(`${API_BASE}/markets?district=${encodeURIComponent(district)}`, { cache: 'no-store' });
                 if (!res.ok) throw new Error();
                 const data = await res.json();
                 if (data.status === 'success') {
