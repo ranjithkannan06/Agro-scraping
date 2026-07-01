@@ -45,7 +45,6 @@ async def trigger_notifications(request: Request, data: NotifyModel):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Notification dispatch failed: {str(e)}"
         )
-
 @api_router.post("/internal/broadcast")
 async def trigger_broadcast(request: Request, data: NotifyModel):
     """
@@ -63,8 +62,6 @@ async def trigger_broadcast(request: Request, data: NotifyModel):
             detail=f"Websocket broadcast failed: {str(e)}"
         )
 
-from core.sheets import get_google_sheet_data
-
 @api_router.get("/prices")
 async def get_prices(
     request: Request, 
@@ -75,28 +72,25 @@ async def get_prices(
     commodity: str = None
 ):
     try:
-        all_records = get_google_sheet_data()
+        db = request.app.mongodb
+        collection = db["market_prices"]
         
-        filtered = []
-        for r in all_records:
-            if commodity and commodity.lower() not in r.get("commodity_name", "").lower():
-                continue
-            if date and date != r.get("date_scraped", ""):
-                continue
-            if category and category.lower() not in r.get("category", "").lower():
-                continue
-            if district and district.lower() not in r.get("district", r.get("market_name", "")).lower():
-                # Note: District might be absent in standard sheet, so falling back to market_name or parsing it
-                continue
-            if city and city.lower() not in r.get("market_name", "").lower():
-                continue
-            filtered.append(r)
+        query = {}
+        if category: query["category"] = {"$regex": category, "$options": "i"}
+        if date: query["date_scraped"] = date
+        if commodity: query["commodity_name"] = {"$regex": commodity, "$options": "i"}
+        if city: query["market_name"] = {"$regex": city, "$options": "i"}
+        
+        if district and not city:
+            query["$or"] = [
+                {"district": {"$regex": district, "$options": "i"}},
+                {"market_name": {"$regex": district, "$options": "i"}}
+            ]
+        elif district and city:
+            query["district"] = {"$regex": district, "$options": "i"}
             
-        # Sort by date descending
-        filtered.sort(key=lambda x: x.get("date_scraped", ""), reverse=True)
-        
-        # Limit to 1000
-        filtered = filtered[:1000]
+        cursor = collection.find(query, {"_id": 0}).sort("date_scraped", -1).limit(1000)
+        filtered = await cursor.to_list(length=1000)
         
         if not filtered:
             raise HTTPException(
@@ -117,24 +111,30 @@ async def get_prices(
 @api_router.get("/prices/latest")
 async def get_latest_prices(request: Request):
     """
-    Fetches the latest prices per commodity and market directly from Google Sheets.
+    Fetches the latest prices per commodity and market directly from MongoDB.
     """
     try:
-        all_records = get_google_sheet_data()
+        db = request.app.mongodb
+        collection = db["market_prices"]
         
-        # Sort records so oldest are first. Then when we populate the dict, 
-        # the latest dates overwrite the older ones.
-        all_records.sort(key=lambda x: x.get("date_scraped", ""))
+        pipeline = [
+            {"$sort": {"date_scraped": -1}},
+            {
+                "$group": {
+                    "_id": {
+                        "commodity_name": "$commodity_name",
+                        "market_name": "$market_name"
+                    },
+                    "latest_record": {"$first": "$$ROOT"}
+                }
+            },
+            {"$replaceRoot": {"newRoot": "$latest_record"}},
+            {"$project": {"_id": 0}},
+            {"$sort": {"date_scraped": -1}}
+        ]
         
-        latest_map = {}
-        for r in all_records:
-            comm = r.get("commodity_name", "")
-            market = r.get("market_name", "")
-            key = f"{comm}_{market}"
-            latest_map[key] = r
-            
-        results = list(latest_map.values())
-        results.sort(key=lambda x: x.get("date_scraped", ""), reverse=True)
+        cursor = collection.aggregate(pipeline)
+        results = await cursor.to_list(length=2000)
         
         return {"status": "success", "data": results}
     except Exception as e:
@@ -147,17 +147,16 @@ async def get_latest_prices(request: Request):
 @api_router.get("/districts")
 async def get_districts(request: Request):
     """
-    Returns a unique list of all districts (markets) discovered in Google Sheets.
+    Returns a unique list of all districts (markets) discovered in MongoDB.
     """
     try:
-        records = get_google_sheet_data()
-        districts = set()
-        for r in records:
-            m = r.get("market_name", "").strip()
-            if m:
-                # Simplistic mapping: treating market_name as district/market combo
-                districts.add(m)
-        return {"status": "success", "data": sorted(list(districts))}
+        db = request.app.mongodb
+        collection = db["market_prices"]
+        districts = await collection.distinct("district")
+        if not districts:
+            districts = await collection.distinct("market_name")
+        districts = [d for d in districts if d]
+        return {"status": "success", "data": sorted(districts)}
     except Exception as e:
         logger.error(f"Error fetching districts: {e}")
         return {"status": "error", "data": []}
@@ -165,25 +164,22 @@ async def get_districts(request: Request):
 @api_router.get("/districts/today")
 async def get_districts_today(request: Request, date: str = None):
     """
-    Returns unique districts updated on a specific date from Google Sheets.
+    Returns unique districts updated on a specific date from MongoDB.
     """
     if not date:
         date = date_obj.today().isoformat()
         
     try:
-        records = get_google_sheet_data()
-        districts = set()
-        for r in records:
-            if r.get("date_scraped", "") == date:
-                m = r.get("market_name", "").strip()
-                if m:
-                    districts.add(m)
+        db = request.app.mongodb
+        collection = db["market_prices"]
+        districts = await collection.distinct("district", {"date_scraped": date})
+        districts = [d for d in districts if d]
                     
         return {
             "status": "success", 
             "date": date,
             "count": len(districts),
-            "data": sorted(list(districts))
+            "data": sorted(districts)
         }
     except Exception as e:
         logger.error(f"Error fetching today's districts: {e}")
@@ -192,16 +188,14 @@ async def get_districts_today(request: Request, date: str = None):
 @api_router.get("/categories")
 async def get_categories(request: Request):
     """
-    Returns a unique list of all categories discovered in Google Sheets.
+    Returns a unique list of all categories discovered in MongoDB.
     """
     try:
-        records = get_google_sheet_data()
-        categories = set()
-        for r in records:
-            c = r.get("category", "").strip()
-            if c:
-                categories.add(c)
-        return {"status": "success", "data": sorted(list(categories))}
+        db = request.app.mongodb
+        collection = db["market_prices"]
+        categories = await collection.distinct("category")
+        categories = [c for c in categories if c]
+        return {"status": "success", "data": sorted(categories)}
     except Exception as e:
         logger.error(f"Error fetching categories: {e}")
         return {"status": "error", "data": []}
@@ -247,7 +241,7 @@ async def get_cities(request: Request, district: str = None):
         cities = await collection.distinct("market_name", query)
         if not cities:
             raise HTTPException(status_code=404, detail="No markets/cities found.")
-        return {"status": "success", "data": cities}
+        return {"status": "success", "data": sorted(cities)}
     except HTTPException:
         raise
     except Exception as e:
@@ -257,18 +251,16 @@ async def get_cities(request: Request, district: str = None):
 async def get_markets(request: Request, district: str = None):
     """
     Returns specific markets mapped to a given district. 
-    (For this schema, market_name encapsulates the primary city)
     """
     try:
-        records = get_google_sheet_data()
-        markets = set()
-        for r in records:
-            m = r.get("market_name", "").strip()
-            if district and district.lower() not in m.lower():
-                continue
-            if m:
-                markets.add(m)
-        return {"status": "success", "data": sorted(list(markets))}
+        db = request.app.mongodb
+        collection = db["market_prices"]
+        query = {}
+        if district:
+            query["district"] = {"$regex": district, "$options": "i"}
+        markets = await collection.distinct("market_name", query)
+        markets = [m for m in markets if m]
+        return {"status": "success", "data": sorted(markets)}
     except Exception as e:
         logger.error(f"Error fetching markets: {e}")
         return {"status": "error", "data": []}
