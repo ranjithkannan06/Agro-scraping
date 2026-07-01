@@ -1,100 +1,148 @@
-# 🌾 FARMER'S HUB - Market Price Scraper & Dashboard
+# 🌾 Farmer's Hub — Agro Price Tracker
 
-Welcome to the **Athanur Agro** repository! This project is designed to scrape, store, and display daily agricultural market prices (specifically flowers, vegetables, and other commodities) in Tamilnadu, India.
-
----
-
-> [!NOTE]
-> ### 🎓 Learning Journey: Web Scraping
-> **I am currently learning web scraping!** This project is a hands-on learning environment where I am exploring:
-> - Automated data extraction using **Python** and **Playwright**.
-> - Navigating dynamic single-page applications (SPAs).
-> - Dealing with complex page elements, dynamic dropdown menus, dates, and paginated tables.
-> - Storing extracted data into databases (MongoDB) and syncing them to Google Sheets.
-> - Triggering automated notifications to backend and mobile services.
+> **⚠️ Heads up:** This is a personal learning project, not a product. We built this to understand real-world web scraping, backend pipelines, and dashboarding — not to ship anything to users. If something's broken, that's kind of the point 😄
 
 ---
 
-## 📁 Repository Structure
+## 🎓 What is this?
 
-Here's an overview of the key components in this repository:
+This is a **hands-on study project** built by students learning full-stack development and data engineering. The idea was simple: pick a real problem (farmers in Tamilnadu don't have easy access to commodity price trends), build a solution end-to-end, and learn as much as possible along the way.
 
-*   **`scraper/`**: The core web scraping service.
-    *   `src/scrapers/vayal_scraper.py`: The main scraping script using Playwright to extract flower prices from VayalAgro.
-    *   `src/main.py`: The scheduler (using APScheduler) that runs the scraping job periodically.
-    *   `src/database.py` & `src/google_sheets.py`: Data persistence layers (MongoDB & Google Sheets).
-*   **`backend/`**: Fast API backend service that serves scraped prices to clients and handles notifications.
-*   **`web_dashboard/`**: Next.js / React-based web dashboard to view historical price trends.
-*   **`mobile/`**: React Native mobile app for farmers and traders to receive live price updates.
-*   **`test_scraper.py`**: A lightweight script to test/dump HTML from the target site.
+We are **not** affiliated with VayalAgro or any agricultural organization. This is purely for **learning purposes**.
 
----
+Things we were figuring out while building this:
 
-## 🛠️ Web Scraping Concepts I am Learning Here
-
-Building this scraper covers several crucial modern web scraping techniques:
-
-1.  **Dynamic Rendering (Playwright vs BeautifulSoup)**:
-    Since the target site (`vayalagro.com`) is a modern JavaScript application (Vue.js), standard HTML parsers like BeautifulSoup won't see the data. We use **Playwright** to spin up a headless browser, execute JavaScript, select options, and load the dynamic tables.
-2.  **Robust Element Locators**:
-    Locating select dropdowns and buttons that don't have unique `id` or `name` attributes by using custom Javascript evaluators and text-based matching (e.g. searching options for "Flowers" or matching button text like `Search` or `>` / `Next`).
-3.  **State and Form Interactions**:
-    Selecting category options, matching districts, entering target dates in date fields, and programmatically triggering change/input events so the page knows to fetch the corresponding records.
-4.  **Pagination Handling**:
-    Iterating through multiple result pages by detecting and clicking the "Next" (`>`) button, checking for disabled states, and fingerprinting the table rows to avoid infinite loops.
-5.  **Anti-Bot & Verification Measures**:
-    Configuring realistic desktop `User-Agent` strings and viewports to prevent blockages or CAPTCHAs.
+- How does web scraping actually work on modern JS-heavy sites?
+- How do you store and query time-series data in MongoDB?
+- How does a FastAPI backend serve data to a frontend?
+- How do you sync data to Google Sheets via a service account?
+- How do you schedule background jobs that run automatically?
+- How do you containerize a multi-service app with Docker?
 
 ---
 
-## 🚀 How to Set Up & Run the Scraper Locally
+## 📚 What We Learned (The Real README)
 
-Follow these steps to set up the scraper on your machine:
+### 1. Scraping SPAs is hard
+The target site (`vayalagro.com`) is a Vue.js app — `requests` + `BeautifulSoup` sees nothing. You need a real browser. We used **Playwright** to launch headless Chromium, interact with dropdowns, trigger JS events, and wait for dynamic content to render.
 
-### 1. Create a Python Virtual Environment
-Keep your dependencies clean and isolated:
+**Key gotcha we hit:** The page has multiple hidden `<table>` elements (mobile layout vs desktop layout). `document.querySelector("table")` always picks the hidden one. You have to check `offsetParent !== null` to find the actually-visible table.
+
+### 2. Pagination isn't always a "Next" button
+We assumed pagination = click a Next button. Turned out the site uses client-side rendering — all results render at once from a Heroku API (`vaiyal-app.herokuapp.com`). No pagination widget exists. We diagnosed this by intercepting all network responses with Playwright's `page.on("response", ...)`.
+
+### 3. Fixed `sleep()` is a bad wait strategy
+Early versions of the scraper had `await page.wait_for_timeout(4000)` everywhere. Sometimes 4s is too short (slow network), sometimes it's wasteful. We replaced fixed delays with `wait_for_function()` — polling the DOM until actual content appeared.
+
+### 4. MongoDB URL issues in Docker vs local
+Our `.env` has `MONGODB_URL=mongodb://mongodb:27017` (Docker hostname). Running scripts outside Docker caused connection failures. The fix: detect `/.dockerenv` at runtime and rewrite the hostname to `127.0.0.1`.
+
+### 5. Google Sheets API needs the right scopes
+Service account JSON from Firebase Console doesn't automatically have Sheets access. You need to explicitly pass `spreadsheets` + `drive` scopes when building credentials, AND share the spreadsheet with the service account email as an editor.
+
+---
+
+## 🗂️ Project Structure
+
+```
+├── scraper/
+│   └── src/
+│       ├── scrapers/vayal_scraper.py   ← Main Playwright scraper
+│       ├── main.py                     ← APScheduler job (runs every 5 min)
+│       ├── database.py                 ← MongoDB async writes (motor)
+│       └── google_sheets.py            ← gspread sync to Google Sheets
+├── backend/                            ← FastAPI REST API + WebSocket
+├── web_dashboard/                      ← Web UI (HTML/CSS/JS)
+├── mobile/                             ← React Native app (WIP)
+├── run.bat                             ← One-click launcher (local mode)
+├── docker-compose.yml                  ← Full stack containerized
+│
+│   ── Diagnostic scripts (our debug toolkit) ──
+├── check_network.py        ← Verify site is reachable + log all network calls
+├── check_elements.py       ← Audit dropdowns and buttons on the live page
+├── check_page_structure.py ← Test dropdown reactivity (select → wait → verify)
+├── check_detail_page.py    ← Verify detail page table extraction works
+└── check_sheets.py         ← Test Google Sheets connection + write access
+```
+
+---
+
+## 🚀 Running It Locally
+
+### Prerequisites
+- Python 3.10+
+- MongoDB running on port 27017
+- A Google service account JSON with Sheets + Drive scopes
+
+### Setup
 ```bash
+# 1. Create and activate virtual environment
 python -m venv .venv
-```
+.venv\Scripts\activate          # Windows
+source .venv/bin/activate       # macOS/Linux
 
-### 2. Activate the Virtual Environment
-*   **Windows (PowerShell):**
-    ```powershell
-    .venv\Scripts\Activate.ps1
-    ```
-*   **Windows (Command Prompt):**
-    ```cmd
-    .venv\Scripts\activate.bat
-    ```
-*   **macOS / Linux:**
-    ```bash
-    source .venv/bin/activate
-    ```
-
-### 3. Install Dependencies
-Install all required libraries including Playwright, motor (async MongoDB driver), APScheduler, and Google Sheets connectors:
-```bash
+# 2. Install dependencies
+pip install -r requirements.txt
 pip install -r scraper/requirements.txt
-```
 
-### 4. Install Playwright Browsers
-Download the Chromium browser binaries used by Playwright:
-```bash
+# 3. Install Playwright browsers
 playwright install chromium
+
+# 4. Copy and fill in your credentials
+cp .env.example .env
+# → Set GOOGLE_SHEET_ID, MONGODB_URL, etc.
 ```
 
-### 5. Run the Scraper manually
-Run the scraper script to fetch the latest flower market data:
+### Run everything
 ```bash
+# Windows one-click launcher (starts backend + scraper + opens dashboard)
+.\run.bat
+
+# Or run just the scraper manually
 python scraper/src/scrapers/vayal_scraper.py
 ```
 
+### Docker (full stack)
+```bash
+docker-compose up --build
+```
+
 ---
 
-## 🔍 Pagination & Multi-Page Scraping
+## 🔬 Diagnostic Scripts
 
-When a search returns many rows, the table splits across multiple pages. The scraper is configured to:
-1.  Extract all records from the current page.
-2.  Find the `Next` (`>`) navigation button.
-3.  Verify the button is clickable (not disabled).
-4.  Click the button, wait for the table to update, and repeat until no `Next` button is found or a page fingerprint matches the previous page (signaling we are at the end).
+We built a bunch of standalone scripts to debug specific parts of the pipeline. Run these when something breaks:
+
+| Script | What it checks |
+|---|---|
+| `check_network.py` | Can we reach `vayalagro.com`? Logs all HTTP calls |
+| `check_elements.py` | Are all dropdowns and buttons present and correct? |
+| `check_page_structure.py` | Does selecting a category→district actually enable Search? |
+| `check_detail_page.py` | Does the price history table extract correctly? |
+| `check_sheets.py` | Is Google Sheets connected? Does write access work? |
+| `check_mongodb.py` | How many records are in MongoDB? Breakdown by category? |
+
+---
+
+## 📊 Data Flow
+
+```
+vayalagro.com  →  Playwright scraper  →  MongoDB (primary store)
+                                      →  Google Sheets (sync copy)
+                                      →  FastAPI backend  →  Web Dashboard
+                                                         →  Mobile app
+```
+
+---
+
+## ⚠️ Disclaimer
+
+- This project scrapes a public website for **personal educational use only**
+- We do not store or redistribute any proprietary data
+- We have rate limiting in place to avoid hammering the site
+- This is not affiliated with VayalAgro, Athanur Agro, or any farmer organization
+- **Do not use this in production** — it's a study project and will definitely break
+
+---
+
+*Built with curiosity, broken many times, and slowly fixed 🛠️*
