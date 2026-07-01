@@ -184,19 +184,52 @@
         </div>
 
         <!-- Prices Section Header -->
-        <div class="flex justify-between items-center mb-6">
-            <h2 id="sectionTitle" class="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">Active Wholesale Rates</h2>
-            <button onclick="loadLatestPrices()" class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1.5 transition-colors">
-                🔄 Sync Latest
-            </button>
+        <div class="flex justify-between items-center mb-6 flex-wrap gap-4">
+            <h2 id="sectionTitle" class="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight flex items-center">Active Wholesale Rates <span id="recordCount" class="text-sm text-emerald-600 font-medium ml-3 bg-emerald-50 px-2 py-0.5 rounded-md hidden"></span></h2>
+            <div class="flex items-center gap-3">
+                <div class="flex bg-slate-100 p-1 rounded-lg">
+                    <button id="viewGridBtn" onclick="setView('grid')" class="px-3 py-1.5 rounded-md text-sm font-bold bg-white text-emerald-700 shadow-sm transition-all">Cards</button>
+                    <button id="viewTableBtn" onclick="setView('table')" class="px-3 py-1.5 rounded-md text-sm font-bold text-slate-500 hover:text-slate-700 transition-all">Table</button>
+                </div>
+                <button onclick="loadLatestPrices()" class="text-sm font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1.5 transition-colors bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm">
+                    🔄 Sync Latest
+                </button>
+            </div>
         </div>
 
         <!-- Error/Loading indicators -->
         <div id="statusIndicator" class="text-center font-semibold text-rose-500 bg-rose-50 border border-rose-100 p-4 rounded-xl hidden mb-8"></div>
 
-        <!-- Responsive Card Grid -->
-        <div id="priceGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 min-h-[200px]">
-            <!-- Dynamic Price Cards render here via JS -->
+        <!-- Data Container -->
+        <div id="dataContainer" class="min-h-[200px]">
+            <!-- Responsive Card Grid -->
+            <div id="priceGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <!-- Dynamic Price Cards render here via JS -->
+            </div>
+            
+            <!-- Table View -->
+            <div id="priceTableContainer" class="hidden overflow-x-auto bg-white rounded-2xl border border-slate-100 shadow-sm">
+                <table class="w-full text-left border-collapse min-w-[700px]">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-100 text-xs uppercase tracking-wider text-slate-500">
+                            <th class="p-4 font-bold">Commodity</th>
+                            <th class="p-4 font-bold">Category</th>
+                            <th class="p-4 font-bold">Market (District)</th>
+                            <th class="p-4 font-bold">Rate</th>
+                            <th class="p-4 font-bold">Updated</th>
+                            <th class="p-4 font-bold text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="priceTableBody" class="text-sm text-slate-700"></tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination Controls -->
+            <div id="paginationContainer" class="mt-8 flex justify-center hidden">
+                <button onclick="loadMore()" class="px-6 py-2.5 bg-white border border-slate-200 hover:border-emerald-300 text-emerald-600 font-bold rounded-full shadow-sm transition-all flex items-center gap-2">
+                    Load More ↓
+                </button>
+            </div>
         </div>
     </main>
 
@@ -234,9 +267,14 @@
         let allPrices = [];
         let chartInstance = null;
         let wsConn = null;
-        let reconnectDelay = 1000; // Exponential backoff starts at 1s
+        let reconnectDelay = 1000;
         let reconnectTimeoutId = null;
         let reconnectTimerIntervalId = null;
+        
+        // Pagination & View State
+        let currentView = 'grid'; // 'grid' or 'table'
+        let currentPage = 1;
+        const ITEMS_PER_PAGE = 24;
         
         // Cache for Tamil translations
         let translationCache = {};
@@ -271,10 +309,10 @@
                 document.getElementById('descEn').classList.remove('hidden');
                 document.getElementById('descTa').classList.add('hidden');
                 document.getElementById('filterTitle').textContent = 'Apply Market Filters';
-                document.getElementById('sectionTitle').textContent = 'Active Wholesale Rates';
+                document.getElementById('sectionTitle').innerHTML = 'Active Wholesale Rates <span id="recordCount" class="text-sm text-emerald-600 font-medium ml-3 bg-emerald-50 px-2 py-0.5 rounded-md hidden"></span>';
                 document.getElementById('statLabel').textContent = 'Database Status';
             }
-            renderGrid();
+            renderData(true);
         }
 
         // Set default filter date to today
@@ -294,6 +332,14 @@
 
         function hideStatus() {
             document.getElementById('statusIndicator').classList.add('hidden');
+        }
+        
+        function clearFilters() {
+            document.getElementById('categoryInput').value = '';
+            document.getElementById('districtInput').value = '';
+            document.getElementById('cityInput').value = '';
+            document.getElementById('dateInput').value = '';
+            fetchFilteredPrices();
         }
 
         // --- DYNAMIC FILTERS LOOKUPS ---
@@ -379,18 +425,58 @@
         }
 
         // --- LOAD PRICES ---
-        async function loadLatestPrices() {
+        function showLoadingSkeleton() {
             hideStatus();
             const grid = document.getElementById('priceGrid');
-            grid.innerHTML = '<div class="col-span-full py-12 text-center text-slate-400 font-semibold flex flex-col justify-center items-center gap-2"><span>🔄</span> Refreshing wholesale rate sheets...</div>';
+            const tbody = document.getElementById('priceTableBody');
+            const loadBtn = document.getElementById('paginationContainer');
+            loadBtn.classList.add('hidden');
+            document.getElementById('recordCount').classList.add('hidden');
             
+            if (currentView === 'grid') {
+                grid.innerHTML = Array(8).fill(0).map(() => `
+                    <div class="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm min-w-[280px] animate-pulse">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="h-4 bg-slate-200 rounded-full w-20"></div>
+                            <div class="h-4 bg-slate-200 rounded-full w-24"></div>
+                        </div>
+                        <div class="flex items-center gap-2.5 mb-3">
+                            <div class="h-6 bg-slate-200 rounded-full w-6"></div>
+                            <div class="h-5 bg-slate-200 rounded-full w-32"></div>
+                        </div>
+                        <div class="h-3 bg-slate-200 rounded-full w-40 mb-4 mt-2"></div>
+                        <div class="py-4 border-t border-b border-slate-50 mb-4 bg-slate-50/50 rounded-xl h-16"></div>
+                        <div class="h-8 bg-slate-200 rounded-lg w-full mt-4"></div>
+                    </div>
+                `).join('');
+                document.getElementById('priceTableContainer').classList.add('hidden');
+                grid.classList.remove('hidden');
+            } else {
+                tbody.innerHTML = Array(5).fill(0).map(() => `
+                    <tr class="animate-pulse border-b border-slate-50">
+                        <td class="p-4"><div class="h-5 bg-slate-200 rounded w-24"></div></td>
+                        <td class="p-4"><div class="h-4 bg-slate-200 rounded-full w-16"></div></td>
+                        <td class="p-4"><div class="h-4 bg-slate-200 rounded w-20 mb-1"></div><div class="h-3 bg-slate-200 rounded w-16"></div></td>
+                        <td class="p-4"><div class="h-6 bg-slate-200 rounded w-16"></div></td>
+                        <td class="p-4"><div class="h-4 bg-slate-200 rounded-full w-20"></div></td>
+                        <td class="p-4 text-center"><div class="h-7 bg-slate-200 rounded-lg w-20 mx-auto"></div></td>
+                    </tr>
+                `).join('');
+                document.getElementById('priceTableContainer').classList.remove('hidden');
+                document.getElementById('priceGrid').classList.add('hidden');
+            }
+        }
+
+        async function loadLatestPrices() {
+            showLoadingSkeleton();
             try {
                 // Fetch latest dynamic prices with cache-busting
                 const res = await fetch(`${API_BASE}/prices/latest`, { cache: 'no-store' });
                 if (!res.ok) {
                     if (res.status === 404) {
                         showStatus("No price files found in the database. Running your scraper first will seed local MongoDB.", true);
-                        grid.innerHTML = '';
+                        allPrices = [];
+                        renderData(true);
                         return;
                     }
                     throw new Error("HTTP error: " + res.status);
@@ -398,23 +484,21 @@
                 const data = await res.json();
                 if (data.status === 'success') {
                     allPrices = data.data;
-                    renderGrid();
+                    renderData(true);
                 }
             } catch (err) {
                 showStatus("Failed to contact the backend engine. Please check if uvicorn is running on http://127.0.0.1:8000", true);
-                grid.innerHTML = '';
+                allPrices = [];
+                renderData(true);
             }
         }
 
         async function fetchFilteredPrices() {
-            hideStatus();
+            showLoadingSkeleton();
             const category = document.getElementById('categoryInput').value;
             const district = document.getElementById('districtInput').value;
             const city = document.getElementById('cityInput').value;
             const date = dateInput.value;
-            
-            const grid = document.getElementById('priceGrid');
-            grid.innerHTML = '<div class="col-span-full py-12 text-center text-slate-400 font-semibold flex flex-col justify-center items-center gap-2"><span>🔍</span> Querying database indices...</div>';
             
             let url = `${API_BASE}/prices?`;
             if (category) url += `category=${encodeURIComponent(category)}&`;
@@ -427,7 +511,7 @@
                 if (!res.ok) {
                     if (res.status === 404) {
                         allPrices = [];
-                        renderGrid();
+                        renderData(true);
                         return;
                     }
                     throw new Error();
@@ -435,11 +519,12 @@
                 const data = await res.json();
                 if (data.status === 'success') {
                     allPrices = data.data;
-                    renderGrid();
+                    renderData(true);
                 }
             } catch (err) {
                 showStatus("Database query failed. Ensure backend API is active.", true);
-                grid.innerHTML = '';
+                allPrices = [];
+                renderData(true);
             }
         }
 
@@ -481,79 +566,148 @@
             }
         }
 
-        // --- RENDER DYNAMIC CARD GRID ---
-        function renderGrid() {
+        // --- RENDER DYNAMIC DATA (PAGINATED & MULTI-VIEW) ---
+        function setView(viewType) {
+            currentView = viewType;
+            if (viewType === 'grid') {
+                document.getElementById('viewGridBtn').className = 'px-3 py-1.5 rounded-md text-sm font-bold bg-white text-emerald-700 shadow-sm transition-all';
+                document.getElementById('viewTableBtn').className = 'px-3 py-1.5 rounded-md text-sm font-bold text-slate-500 hover:text-slate-700 transition-all';
+                document.getElementById('priceGrid').classList.remove('hidden');
+                document.getElementById('priceTableContainer').classList.add('hidden');
+            } else {
+                document.getElementById('viewTableBtn').className = 'px-3 py-1.5 rounded-md text-sm font-bold bg-white text-emerald-700 shadow-sm transition-all';
+                document.getElementById('viewGridBtn').className = 'px-3 py-1.5 rounded-md text-sm font-bold text-slate-500 hover:text-slate-700 transition-all';
+                document.getElementById('priceTableContainer').classList.remove('hidden');
+                document.getElementById('priceGrid').classList.add('hidden');
+            }
+            renderData(true);
+        }
+
+        function loadMore() {
+            currentPage++;
+            renderData(false);
+        }
+
+        function renderData(resetPage = true) {
             hideStatus();
+            if (resetPage) currentPage = 1;
+            
             const grid = document.getElementById('priceGrid');
-            grid.innerHTML = '';
+            const tbody = document.getElementById('priceTableBody');
+            const loadMoreBtn = document.getElementById('paginationContainer');
+            const recordCountBadge = document.getElementById('recordCount');
+            
+            if (resetPage) {
+                grid.innerHTML = '';
+                tbody.innerHTML = '';
+            }
+            
+            if (allPrices && allPrices.length > 0) {
+                recordCountBadge.textContent = `${allPrices.length} records`;
+                recordCountBadge.classList.remove('hidden');
+            } else {
+                recordCountBadge.classList.add('hidden');
+            }
             
             if (!allPrices || allPrices.length === 0) {
-                const text = currentLang === 'ta' ? 'வடிகட்டப்பட்ட விவரங்களுக்கு விலைகள் எதுவும் இல்லை.' : 'No market records match the active database indexes. Run the scraper or modify filters.';
-                grid.innerHTML = `<div class="col-span-full py-16 text-center text-slate-400 font-semibold flex flex-col justify-center items-center gap-2"><span>📂</span> ${text}</div>`;
+                const text = currentLang === 'ta' ? 'வடிகட்டப்பட்ட விவரங்களுக்கு விலைகள் எதுவும் இல்லை.' : 'No market records match the active database filters.';
+                grid.innerHTML = `<div class="col-span-full py-16 text-center text-slate-500 font-semibold flex flex-col justify-center items-center gap-4">
+                    <span class="text-5xl opacity-80">📂</span> 
+                    <p class="text-lg">${text}</p>
+                    <button onclick="clearFilters()" class="px-5 py-2.5 mt-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold transition-all shadow-sm">Clear Filters</button>
+                </div>`;
+                tbody.innerHTML = `<tr><td colspan="6" class="p-16 text-center text-slate-500 font-semibold"><div class="flex flex-col items-center gap-3"><span class="text-3xl">📂</span>${text}<button onclick="clearFilters()" class="px-4 py-2 mt-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all">Clear Filters</button></div></td></tr>`;
+                loadMoreBtn.classList.add('hidden');
                 return;
             }
             
-            allPrices.forEach(p => {
-                const card = document.createElement('div');
-                card.className = "bg-white rounded-2xl border border-slate-100 p-6 card-hover shadow-sm flex flex-col justify-between relative overflow-hidden min-w-[280px]";
-                
+            const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+            const endIndex = startIndex + ITEMS_PER_PAGE;
+            const pageData = allPrices.slice(startIndex, endIndex);
+            
+            pageData.forEach(p => {
                 const cardId = `card-${Math.random().toString(36).substr(2, 9)}`;
                 const commId = `${cardId}-comm`;
                 const marketId = `${cardId}-market`;
                 const timeSpan = getRelativeTimeSpan(p.scraped_at);
-                
                 const histBtnText = currentLang === 'ta' ? '📈 வரலாறு காண்க' : '📈 Price History';
+                const priceVal = p.price || p.price_modal;
                 
-                card.innerHTML = `
-                    <div>
-                        <!-- Header badge -->
-                        <div class="flex justify-between items-start mb-4">
-                            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase tracking-wide">
-                                ${p.category || 'Unknown'}
-                            </span>
-                            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${timeSpan.colorClass}" id="${cardId}-badge">
-                                ${timeSpan.text}
-                            </span>
-                        </div>
-                        
-                        <!-- Commodity Name -->
-                        <div class="flex items-center gap-2.5 mb-3">
-                            <span class="text-2xl">🌿</span>
-                            <h4 id="${commId}" class="brand-font text-lg font-bold text-slate-900 leading-tight">${p.commodity_name}</h4>
-                        </div>
-                        
-                        <!-- Market details -->
-                        <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-4 flex items-center gap-1">
-                            📍 <span id="${marketId}">${p.market_name} (${p.district || 'Tamilnadu'})</span>
-                        </p>
-                    </div>
-
-                    <div>
-                        <!-- Price Rate Display -->
-                        <div class="flex items-baseline justify-center gap-1.5 py-4 border-t border-b border-slate-50 mb-4 bg-slate-50/50 rounded-xl">
-                            <span class="text-slate-400 text-xs font-bold uppercase tracking-wider">Rate:</span>
-                            <span class="text-emerald-700 font-extrabold text-2xl">₹${p.price || p.price_modal}</span>
-                            <span class="text-slate-500 text-xs font-semibold">/ ${p.unit || 'Kg'}</span>
+                // --- GRID VIEW ---
+                if (currentView === 'grid') {
+                    const card = document.createElement('div');
+                    card.className = "bg-white rounded-2xl border border-slate-100 p-6 card-hover shadow-sm flex flex-col justify-between relative overflow-hidden min-w-[280px]";
+                    
+                    card.innerHTML = `
+                        <div>
+                            <!-- Header badge -->
+                            <div class="flex justify-between items-start mb-4">
+                                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100 uppercase tracking-wide">
+                                    ${p.category || 'Unknown'}
+                                </span>
+                                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${timeSpan.colorClass}" id="${cardId}-badge">
+                                    ${timeSpan.text}
+                                </span>
+                            </div>
+                            
+                            <!-- Commodity Name -->
+                            <div class="flex items-center gap-2.5 mb-3">
+                                <span class="text-2xl">🌿</span>
+                                <h4 id="${commId}" class="brand-font text-lg font-bold text-slate-900 leading-tight">${p.commodity_name}</h4>
+                            </div>
+                            
+                            <!-- Market details -->
+                            <p class="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-4 flex items-center gap-1">
+                                📍 <span id="${marketId}">${p.market_name} (${p.district || 'Tamilnadu'})</span>
+                            </p>
                         </div>
 
-                        <!-- Footer actions -->
-                        <div class="flex justify-between items-center text-xs text-slate-400 mb-4">
-                            <span>Unit: <strong class="text-slate-600 font-semibold">${p.unit || 'Kg'}</strong></span>
-                            <span>Date: <strong class="text-slate-600 font-semibold">${p.date_scraped}</strong></span>
+                        <div>
+                            <!-- Price Rate Display -->
+                            <div class="flex items-baseline justify-center gap-1.5 py-4 border-t border-b border-slate-50 mb-4 bg-slate-50/50 rounded-xl">
+                                <span class="text-slate-400 text-xs font-bold uppercase tracking-wider">Rate:</span>
+                                <span class="text-emerald-700 font-extrabold text-2xl">₹${priceVal}</span>
+                                <span class="text-slate-500 text-xs font-semibold">/ ${p.unit || 'Kg'}</span>
+                            </div>
+
+                            <!-- Footer actions -->
+                            <div class="flex justify-between items-center text-xs text-slate-400 mb-4">
+                                <span>Unit: <strong class="text-slate-600 font-semibold">${p.unit || 'Kg'}</strong></span>
+                                <span>Date: <strong class="text-slate-600 font-semibold">${p.date_scraped}</strong></span>
+                            </div>
+                            
+                            <button onclick="openHistoryChart('${p.commodity_name.replace(/'/g, "\\'")}', '${(p.category || '').replace(/'/g, "\\'")}', '${p.market_name.replace(/'/g, "\\'")}', '${priceVal}')" 
+                                    class="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 font-semibold rounded-lg text-xs tracking-wide shadow-sm flex items-center justify-center gap-1 transition-colors">
+                                ${histBtnText}
+                            </button>
                         </div>
-                        
-                        <button onclick="openHistoryChart('${p.commodity_name.replace(/'/g, "\\'")}', '${p.category.replace(/'/g, "\\'")}', '${p.market_name.replace(/'/g, "\\'")}', '${p.price || p.price_modal}')" 
-                                class="w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 font-semibold rounded-lg text-xs tracking-wide shadow-sm flex items-center justify-center gap-1 transition-colors">
-                            ${histBtnText}
-                        </button>
-                    </div>
-                `;
-                
-                grid.appendChild(card);
-                
-                // Keep record data elements mapped
-                card.dataset.scrapedAt = p.scraped_at;
-                card.dataset.badgeId = `${cardId}-badge`;
+                    `;
+                    grid.appendChild(card);
+                    card.dataset.scrapedAt = p.scraped_at;
+                    card.dataset.badgeId = `${cardId}-badge`;
+                }
+                // --- TABLE VIEW ---
+                else {
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b border-slate-50 hover:bg-slate-50/50 transition-colors";
+                    tr.innerHTML = `
+                        <td class="p-4">
+                            <div class="flex items-center gap-2">
+                                <span>🌿</span> <span id="${commId}" class="font-bold text-slate-900">${p.commodity_name}</span>
+                            </div>
+                        </td>
+                        <td class="p-4"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 uppercase tracking-wide border border-emerald-100">${p.category || 'Unknown'}</span></td>
+                        <td class="p-4 text-xs font-semibold uppercase tracking-wider text-slate-500" id="${marketId}">${p.market_name} <br/><span class="text-[10px] text-slate-400">${p.district || 'Tamilnadu'}</span></td>
+                        <td class="p-4 whitespace-nowrap"><span class="text-emerald-700 font-extrabold text-lg">₹${priceVal}</span><span class="text-xs text-slate-400">/${p.unit || 'Kg'}</span></td>
+                        <td class="p-4 whitespace-nowrap"><span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase ${timeSpan.colorClass}" id="${cardId}-badge">${timeSpan.text}</span></td>
+                        <td class="p-4 text-center">
+                            <button onclick="openHistoryChart('${p.commodity_name.replace(/'/g, "\\'")}', '${(p.category || '').replace(/'/g, "\\'")}', '${p.market_name.replace(/'/g, "\\'")}', '${priceVal}')" class="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-xs font-bold transition-all shadow-sm">📈 ${currentLang === 'ta' ? 'வரலாறு' : 'History'}</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                    tr.dataset.scrapedAt = p.scraped_at;
+                    tr.dataset.badgeId = `${cardId}-badge`;
+                }
                 
                 // Lazily translate to Tamil if needed
                 if (currentLang === 'ta') {
@@ -561,14 +715,20 @@
                     translateText(p.market_name).then(t => document.getElementById(marketId).textContent = `${t} (${p.district || 'தமிழ்நாடு'})`);
                 }
             });
+            
+            if (endIndex < allPrices.length) {
+                loadMoreBtn.classList.remove('hidden');
+            } else {
+                loadMoreBtn.classList.add('hidden');
+            }
         }
 
         // Loop to dynamically update Relative Timestamps on the UI every 10 seconds
         setInterval(() => {
-            const cards = document.querySelectorAll('#priceGrid > div');
-            cards.forEach(card => {
-                const scrapedAt = card.dataset.scrapedAt;
-                const badgeId = card.dataset.badgeId;
+            const items = document.querySelectorAll('#priceGrid > div, #priceTableBody > tr');
+            items.forEach(item => {
+                const scrapedAt = item.dataset.scrapedAt;
+                const badgeId = item.dataset.badgeId;
                 const badge = document.getElementById(badgeId);
                 
                 if (scrapedAt && badge) {
