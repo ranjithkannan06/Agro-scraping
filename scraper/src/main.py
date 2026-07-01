@@ -44,10 +44,10 @@ async def main():
     logger.info("Starting Farmer's Hub Scraper Scheduler Service...")
     scheduler = AsyncIOScheduler()
     
-    # Add job to run every 5 minutes as specified by current settings
-    scheduler.add_job(scheduled_job, 'interval', minutes=5)
+    # Add job to run every 30 minutes daily between 9 AM and 12 PM
+    scheduler.add_job(scheduled_job, 'cron', hour='9-12', minute='*/30')
     scheduler.start()
-    logger.info("Scraper scheduler initialized successfully. Interval set to every 5 minutes.")
+    logger.info("Scraper scheduler initialized successfully. Set to run daily between 9 AM and 12 PM (every 30 mins).")
     
     # Run immediately on startup to seed the database and spreadsheet
     await scheduled_job()
