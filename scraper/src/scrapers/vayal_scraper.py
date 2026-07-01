@@ -150,80 +150,121 @@ def clean_date_string(date_str):
 
 async def scrape_detail_page(page, detail_url, category, commodity_name, market_name, district, fallback_unit):
     """
-    Loads an individual commodity history subpage and extracts the 14-day 
+    Loads an individual commodity history subpage and extracts the 14-day
     historical prices table.
+
+    The page renders MULTIPLE <table> elements:
+      - Table#0 / #2 : hidden mobile-layout tables (offsetParent=null) with 2 cols (Date, Price/Units)
+      - Table#1      : visible desktop table with 6 cols (Category, District, City, Date, Price, Units)
+    document.querySelector("table") always returns Table#0 which is invisible, causing
+    wait_for_selector to time out. We instead poll for the first VISIBLE table.
     """
     logger.info(f"Scraping historical details from {detail_url}")
     records = []
-    
+
     try:
         await robust_action(page, "goto", detail_url)
-        # Wait up to 10 seconds for the history table to render in the DOM
-        await page.wait_for_selector("table", state="attached", timeout=10000)
-        
-        # Extract rows from the history table
+
+        # Rate-limit: small extra pause after navigation
+        await asyncio.sleep(random.uniform(1.0, 2.0))
+
+        # Poll up to 15 s for a visible table with actual data rows to appear.
+        # (Do NOT use wait_for_selector("table") — it picks the hidden Table#0.)
+        visible_table_found = False
+        for _ in range(15):
+            found = await page.evaluate('''() => {
+                const tables = Array.from(document.querySelectorAll("table"));
+                return tables.some(t => t.offsetParent !== null && t.rows.length > 1);
+            }''')
+            if found:
+                visible_table_found = True
+                break
+            await asyncio.sleep(1.0)
+
+        if not visible_table_found:
+            logger.warning(f"No visible data table found at {detail_url} after 15 s — skipping.")
+            return records
+
+        # Extract rows from the FIRST VISIBLE table that has the most data rows.
+        # For the 6-column desktop layout the headers are:
+        #   Category | District | City | Date | Price | Units
         rows_data = await page.evaluate('''() => {
-            const table = document.querySelector("table");
-            if (!table) return [];
-            return Array.from(table.rows).map(row => 
+            const tables = Array.from(document.querySelectorAll("table"));
+            const visible = tables.filter(t => t.offsetParent !== null && t.rows.length > 1);
+            if (!visible.length) return [];
+            // Prefer the table with the most rows (the detailed history table)
+            const best = visible.reduce((a, b) => (a.rows.length >= b.rows.length ? a : b));
+            return Array.from(best.rows).map(row =>
                 Array.from(row.querySelectorAll("td, th")).map(cell => cell.innerText.trim())
             );
         }''')
-        
+
         if not rows_data or len(rows_data) < 2:
-            logger.warning(f"No history data found in table at {detail_url}")
+            logger.warning(f"No history data found in visible table at {detail_url}")
             return records
 
         headers = [h.lower() for h in rows_data[0]]
         logger.info(f"Found history headers: {headers}")
-        
-        # Try to identify column indices based on headers
+
+        # Detect column indices from header names (handles both 2-col and 6-col layouts)
         date_idx = 0
         price_idx = None
-        
+        unit_idx = None
+
         for idx, h in enumerate(headers):
-            if "date" in h:
+            if h == "date":
                 date_idx = idx
-            elif any(x in h for x in ["price", "rate", "modal", "average", "min", "max"]):
-                price_idx = idx
-                
-        # Fill in defaults if column indices were not found
-        if price_idx is None: 
+            elif h in ("price", "price/units") or "price" in h:
+                if price_idx is None:
+                    price_idx = idx
+            elif h in ("units", "unit") or "quantity" in h:
+                unit_idx = idx
+            elif any(x in h for x in ["rate", "modal", "average", "min", "max"]):
+                if price_idx is None:
+                    price_idx = idx
+
+        # Fallback if price column not detected by name
+        if price_idx is None:
             price_idx = 1 if len(headers) > 1 else 0
 
         for row in rows_data[1:]:
             if len(row) <= date_idx:
                 continue
-                
+
             raw_date = row[date_idx]
-            # Skip header repeats or invalid dates
-            if not raw_date or any(x in raw_date.lower() for x in ["date", "s.no"]):
+            # Skip repeated header rows or non-date values
+            if not raw_date or any(
+                x in raw_date.lower() for x in ["date", "s.no", "category", "district", "city"]
+            ):
                 continue
-                
+
             date_scraped = clean_date_string(raw_date)
-            
-            # Parse price safely
-            raw_price = row[price_idx] if len(row) > price_idx else row[1]
+
+            raw_price = row[price_idx] if len(row) > price_idx else ""
             price = parse_price(raw_price)
-            
-            # If price is successfully extracted, construct standard record
+
+            # Prefer unit from a dedicated column; fall back to passed-in unit
+            extracted_unit = None
+            if unit_idx is not None and len(row) > unit_idx:
+                extracted_unit = row[unit_idx].strip() or None
+
             if price is not None:
                 record = {
                     "commodity_name": commodity_name,
                     "market_name": market_name,
                     "district": get_standardized_district(district or market_name),
                     "price": price,
-                    "unit": fallback_unit or "Kg",
+                    "unit": extracted_unit or fallback_unit or "Kg",
                     "date_scraped": date_scraped,
                     "source_url": detail_url,
                     "category": category,
                 }
                 records.append(record)
-                
+
         logger.info(f"Successfully extracted {len(records)} daily records from history page.")
     except Exception as e:
         logger.error(f"Error scraping detail page {detail_url}: {e}")
-        
+
     return records
 
 def get_category_from_url(url):
@@ -539,7 +580,16 @@ async def scrape_vayal_flowers():
                                     const btn = Array.from(document.querySelectorAll("button")).find(b => b.innerText.toLowerCase().includes("search") || b.classList.contains("catgory-button"));
                                     if (btn) btn.click();
                                 }''')
-                                await page.wait_for_timeout(4000)
+                                # Smart wait: poll until at least one result link appears in the
+                                # listing table, rather than sleeping a fixed 4 s.
+                                try:
+                                    await page.wait_for_function(
+                                        "() => document.querySelectorAll('table td a').length > 0",
+                                        timeout=10000
+                                    )
+                                except Exception:
+                                    pass
+                                await asyncio.sleep(1.5)  # small extra buffer for full render
                                 
                                 # Loop through listing pagination
                                 page_num = 1
@@ -613,10 +663,28 @@ async def scrape_vayal_flowers():
                                     next_btn = next_btn_handle.as_element()
                                     if next_btn:
                                         logger.info(f"Clicking pagination Next button (page {page_num} -> {page_num+1})")
+                                        # Capture the current first link URL so we can detect
+                                        # when the DOM actually updates after the click.
+                                        pre_click_first = await page.evaluate(
+                                            "() => document.querySelector('table td a')?.href || ''"
+                                        )
                                         await next_btn.click()
-                                        await page.wait_for_timeout(3000)
+                                        # Wait for the first visible link to change URL (real DOM
+                                        # update), rather than sleeping a fixed 3 s.
+                                        try:
+                                            await page.wait_for_function(
+                                                "(url) => document.querySelector('table td a')?.href !== url",
+                                                arg=pre_click_first,
+                                                timeout=8000
+                                            )
+                                        except Exception:
+                                            # Timeout means content did not change — end of pages
+                                            logger.info("Content unchanged after Next click — treating as last page.")
+                                            break
+                                        await asyncio.sleep(1.0)  # settle render
                                         page_num += 1
-                                        if page_num > 10:
+                                        if page_num > 20:
+                                            logger.warning("Pagination safety cap (20 pages) reached.")
                                             break
                                     else:
                                         logger.info("Pagination Next button not found or is disabled.")
