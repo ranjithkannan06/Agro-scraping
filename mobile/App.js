@@ -6,7 +6,7 @@ import * as Notifications from 'expo-notifications';
 import { registerForPushNotificationsAsync } from './src/utils/notifications';
 import axios from 'axios';
 
-const API_URL = 'http://10.0.2.2:8000/api';
+const API_URL = 'http://10.178.10.188:8000/api';
 
 export default function App() {
   const [expoPushToken, setExpoPushToken] = useState('');
