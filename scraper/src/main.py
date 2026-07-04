@@ -29,18 +29,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger("scheduler")
 
-async def scheduled_job():
+async def scheduled_job(force=False):
     logger.info("=============================================================")
     logger.info("Starting scheduled scraping and synchronization job...")
     logger.info("=============================================================")
     try:
         # Run the full integrated scraper pipeline (Scrape -> DB Upsert -> Google Sheet Sync -> Backend alert)
-        await scrape_vayal_flowers()
+        await scrape_vayal_flowers(force=force)
         logger.info("Scheduled job execution completed successfully.")
     except Exception as e:
         logger.error(f"Error executing scheduled scraper job: {e}")
 
-async def main():
+async def main(force=False):
     logger.info("Starting Farmer's Hub Scraper Scheduler Service...")
     scheduler = AsyncIOScheduler()
     
@@ -50,7 +50,7 @@ async def main():
     logger.info("Scraper scheduler initialized successfully. Set to run daily between 9 AM and 12 PM (every 30 mins).")
     
     # Run immediately on startup to seed the database and spreadsheet
-    await scheduled_job()
+    await scheduled_job(force=force)
     
     # Keep the script running asynchronously
     while True:
@@ -58,9 +58,14 @@ async def main():
 
 if __name__ == "__main__":
     try:
+        import argparse
+        parser = argparse.ArgumentParser(description="HarvestHub Scraper Scheduler")
+        parser.add_argument("--force", action="store_true", help="Force scrape all records, bypassing dedup")
+        args = parser.parse_args()
+        
         # Allow Windows event loop compatibility
         if sys.platform == 'win32':
             asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-        asyncio.run(main())
+        asyncio.run(main(force=args.force))
     except (KeyboardInterrupt, SystemExit):
         logger.info("Scraper Scheduler Service stopped cleanly.")
