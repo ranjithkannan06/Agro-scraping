@@ -1,21 +1,46 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView, ScrollView, Image } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, SafeAreaView, ScrollView, Animated } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 
-const ActionCard = ({ title, icon, onPress, bgColor, iconColor }) => (
-  <TouchableOpacity 
-    onPress={onPress}
-    className="w-[48%] p-4 rounded-2xl mb-4 shadow-sm flex-col justify-between"
-    style={{ backgroundColor: bgColor || 'white' }}
-  >
-    <View className="mb-3">
-      {icon}
-    </View>
-    <Text className="text-dark font-bold text-lg">{title}</Text>
-  </TouchableOpacity>
+const ActionCard = ({ title, icon, onPress, bgColor, animStyle }) => (
+  <Animated.View style={[{ width: '48%', marginBottom: 16 }, animStyle]}>
+    <TouchableOpacity 
+      onPress={onPress}
+      className="p-4 rounded-2xl shadow-sm flex-col justify-between h-full"
+      style={{ backgroundColor: bgColor || 'white' }}
+    >
+      <View className="mb-3">
+        {icon}
+      </View>
+      <Text className="text-dark font-bold text-lg">{title}</Text>
+    </TouchableOpacity>
+  </Animated.View>
 );
 
 export default function HomeScreen({ navigation }) {
+  const slideAnims = useRef([...Array(4)].map(() => new Animated.Value(0))).current;
+
+  useEffect(() => {
+    const animations = slideAnims.map((anim) => 
+      Animated.timing(anim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      })
+    );
+    Animated.stagger(100, animations).start();
+  }, []);
+
+  const getAnimStyle = (index) => ({
+    opacity: slideAnims[index],
+    transform: [{
+      translateY: slideAnims[index].interpolate({
+        inputRange: [0, 1],
+        outputRange: [30, 0]
+      })
+    }]
+  });
+
   return (
     <SafeAreaView className="flex-1 bg-light">
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
@@ -53,24 +78,28 @@ export default function HomeScreen({ navigation }) {
               icon={<MaterialCommunityIcons name="storefront-outline" size={32} color="#16a34a" />}
               onPress={() => navigation.navigate('Market')}
               bgColor="#dcfce7"
+              animStyle={getAnimStyle(0)}
             />
             <ActionCard 
               title="Crop Advisor"
               icon={<MaterialCommunityIcons name="leaf-outline" size={32} color="#0284c7" />}
               onPress={() => console.log('Crop Advisor')}
               bgColor="#e0f2fe"
+              animStyle={getAnimStyle(1)}
             />
             <ActionCard 
               title="My Farm"
               icon={<Ionicons name="map-outline" size={32} color="#d97706" />}
               onPress={() => console.log('My Farm')}
               bgColor="#fef3c7"
+              animStyle={getAnimStyle(2)}
             />
             <ActionCard 
               title="Schemes"
               icon={<Ionicons name="document-text-outline" size={32} color="#9333ea" />}
               onPress={() => console.log('Govt Schemes')}
               bgColor="#f3e8ff"
+              animStyle={getAnimStyle(3)}
             />
           </View>
 
