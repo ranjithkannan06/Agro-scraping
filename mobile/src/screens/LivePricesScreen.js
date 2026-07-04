@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, ActivityIndicator, SafeAreaView, RefreshControl, TouchableOpacity, Platform, TextInput } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, FlatList, ActivityIndicator, SafeAreaView, RefreshControl, TouchableOpacity, Platform, TextInput, Animated } from 'react-native';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 
-const API_URL = 'http://10.0.2.2:8000/api'; // Android Emulator localhost
-const WS_URL = 'ws://10.0.2.2:8000/ws/prices';
+const API_URL = 'http://10.178.10.188:8000/api'; // Android Emulator localhost
+const WS_URL = 'ws://10.178.10.188:8000/ws/prices';
 
 export default function LivePricesScreen() {
   const [prices, setPrices] = useState([]);
@@ -90,24 +90,54 @@ export default function LivePricesScreen() {
     }
   };
 
-  const renderItem = ({ item }) => (
-    <View className="bg-white p-4 mb-3 rounded-2xl shadow-sm border border-gray-100 flex-row justify-between items-center">
-      <View className="flex-row items-center flex-1">
-        <View className="bg-green-100 p-3 rounded-full mr-3">
-          <MaterialCommunityIcons name="flower" size={24} color="#16a34a" />
+  const AnimatedListItem = ({ item, index }) => {
+    const animValue = useRef(new Animated.Value(0)).current;
+    const hasAnimated = useRef(false);
+
+    useEffect(() => {
+      if (!hasAnimated.current) {
+        Animated.timing(animValue, {
+          toValue: 1,
+          duration: 400,
+          delay: Math.min(index * 50, 500),
+          useNativeDriver: true,
+        }).start(() => {
+          hasAnimated.current = true;
+        });
+      }
+    }, [index]); // Re-run animation if item index somehow changes, though key ensures stability
+
+    const animStyle = {
+      opacity: animValue,
+      transform: [{
+        translateY: animValue.interpolate({
+          inputRange: [0, 1],
+          outputRange: [30, 0]
+        })
+      }]
+    };
+
+    return (
+      <Animated.View style={animStyle} className="bg-white p-4 mb-3 rounded-2xl shadow-sm border border-gray-100 flex-row justify-between items-center">
+        <View className="flex-row items-center flex-1">
+          <View className="bg-green-100 p-3 rounded-full mr-3">
+            <MaterialCommunityIcons name="flower" size={24} color="#16a34a" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-lg font-bold text-dark">{item.commodity}</Text>
+            <Text className="text-sm text-gray-500">{item.market || item.city} • {item.district}</Text>
+            <Text className="text-xs text-gray-400 mt-1">Updated: {item.date}</Text>
+          </View>
         </View>
-        <View className="flex-1">
-          <Text className="text-lg font-bold text-dark">{item.commodity}</Text>
-          <Text className="text-sm text-gray-500">{item.market || item.city} • {item.district}</Text>
-          <Text className="text-xs text-gray-400 mt-1">Updated: {item.date}</Text>
+        <View className="items-end pl-2">
+          <Text className="text-xl font-extrabold text-primary">₹{item.price}</Text>
+          <Text className="text-xs text-gray-500">per {item.unit || 'Kg'}</Text>
         </View>
-      </View>
-      <View className="items-end pl-2">
-        <Text className="text-xl font-extrabold text-primary">₹{item.price}</Text>
-        <Text className="text-xs text-gray-500">per {item.unit || 'Kg'}</Text>
-      </View>
-    </View>
-  );
+      </Animated.View>
+    );
+  };
+
+  const renderItem = ({ item, index }) => <AnimatedListItem item={item} index={index} />;
 
   return (
     <SafeAreaView className="flex-1 bg-light">
@@ -162,6 +192,8 @@ export default function LivePricesScreen() {
           data={filteredPrices}
           keyExtractor={(item, index) => item._id || index.toString()}
           renderItem={renderItem}
+          initialNumToRender={10}
+          windowSize={5}
           contentContainerStyle={{ padding: 16, paddingTop: 8 }}
           showsVerticalScrollIndicator={false}
           refreshControl={
