@@ -301,7 +301,7 @@ def get_category_from_url(url):
         return "Brown sugar"
     return "Other"
 
-async def scrape_vayal_flowers():
+async def scrape_vayal_flowers(force=False):
     """
     Main Scraping Function.
     1. Operates headlessly via Playwright.
@@ -312,6 +312,22 @@ async def scrape_vayal_flowers():
     start_time = datetime.now()
     logger.info(f"Scraper Run Started at {start_time.isoformat()}")
     
+    # -------------------------------------------------------------
+    # Step 0: Check Database for existing records today
+    # -------------------------------------------------------------
+    scraped_today_keys = set()
+    if not force:
+        try:
+            logger.info("Connecting to Database to check for existing records today...")
+            db = Database()
+            await db.connect()
+            scraped_today_keys = await db.get_scraped_today_keys()
+            await db.close()
+        except Exception as db_err:
+            logger.error(f"Failed to check existing records in database: {db_err}")
+    else:
+        logger.info("Force flag enabled. Bypassing dedup checks.")
+        
     all_scraped_records = []
     
     async with async_playwright() as p:
@@ -391,6 +407,11 @@ async def scrape_vayal_flowers():
                 market = link_meta["city"] or link_meta["district"] or "Unknown Market"
                 unit = link_meta["unit"] or "Kg"
                 category = get_category_from_url(detail_url)
+                
+                # Dedup check
+                if not force and (commodity, market) in scraped_today_keys:
+                    logger.info(f"Skipping detail page for {commodity} at {market} - already completely scraped today.")
+                    continue
                 
                 # Scrape history detail table
                 history_records = await scrape_detail_page(
@@ -642,10 +663,19 @@ async def scrape_vayal_flowers():
                                     for l_meta in listing_links:
                                         if l_meta["href"] not in seen_hrefs:
                                             seen_hrefs.add(l_meta["href"])
+                                            
+                                            commodity = l_meta["commodity"] or "Unknown Commodity"
+                                            market = l_meta["city"] or dist or "Unknown Market"
+                                            
+                                            # Dedup check
+                                            if not force and (commodity, market) in scraped_today_keys:
+                                                logger.info(f"Skipping detail page for {commodity} at {market} - already completely scraped today.")
+                                                continue
+                                                
                                             # Traverse detail subpage
                                             l_records = await scrape_detail_page(
-                                                page, l_meta["href"], cat, l_meta["commodity"], 
-                                                l_meta["city"], dist, l_meta["unit"]
+                                                page, l_meta["href"], cat, commodity, 
+                                                market, dist, l_meta["unit"]
                                             )
                                             all_scraped_records.extend(l_records)
                                             await asyncio.sleep(get_random_delay())
@@ -776,9 +806,14 @@ async def scrape_vayal_flowers():
 
 if __name__ == "__main__":
     try:
+        import argparse
+        parser = argparse.ArgumentParser(description="HarvestHub Scraper")
+        parser.add_argument("--force", action="store_true", help="Force scrape all records, bypassing dedup")
+        args = parser.parse_args()
+        
         # Allow Windows event loop compatibility for async subprocesses
         if sys.platform == 'win32':
             asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-        asyncio.run(scrape_vayal_flowers())
+        asyncio.run(scrape_vayal_flowers(force=args.force))
     except (KeyboardInterrupt, SystemExit):
         logger.info("Manual scraper execution terminated.")
