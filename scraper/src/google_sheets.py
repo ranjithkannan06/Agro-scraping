@@ -14,10 +14,16 @@ class GoogleSheetsService:
         # Resolve credential path in a robust way, checking multiple fallback locations
         PATHS_TO_TRY = [
             os.path.abspath(cred_file) if os.path.isabs(cred_file) else None,
-            # Project root (2 levels up from scraper/src)
+            # Project root (2 levels up from scraper/src — the standard layout)
             os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), cred_file)),
             # Scraper root (1 level up from scraper/src)
             os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(__file__)), cred_file)),
+            # CWD-relative (when script is launched from project root directly)
+            os.path.abspath(os.path.join(os.getcwd(), cred_file)),
+            # CWD parent (when launched from scraper/ subdirectory)
+            os.path.abspath(os.path.join(os.getcwd(), '..', cred_file)),
+            # CWD grandparent (when launched from scraper/src/)
+            os.path.abspath(os.path.join(os.getcwd(), '..', '..', cred_file)),
             # Absolute default locations
             os.path.abspath(cred_file),
             '/app/firebase-service-account.json'
