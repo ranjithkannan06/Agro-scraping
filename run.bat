@@ -99,7 +99,7 @@ if %errorlevel% equ 0 (
 
 :: 4. Launch FastAPI Backend in a minimized console
 echo [INFO] Launching FastAPI Backend (port 8000)...
-start "Athanur Backend" /min cmd /k "cd /d %PROJECT_ROOT%backend && uvicorn src.main:app --reload --port 8000"
+start "Athanur Backend" /min cmd /k "cd /d %PROJECT_ROOT%backend && uvicorn src.main:app --host 0.0.0.0 --reload --port 8000"
 
 :: 5. Wait 3 seconds for uvicorn initialization
 echo [INFO] Waiting 3 seconds for backend API service to boot...
