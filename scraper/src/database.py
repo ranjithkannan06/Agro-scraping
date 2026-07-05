@@ -83,8 +83,14 @@ class Database:
             commodity_index = IndexModel([("commodity_name", 1)], name="commodity_name_index")
             date_index = IndexModel([("date_scraped", 1)], name="date_scraped_index")
             
+            # 3. Compound index for fast lookup of today's records
+            lookup_index = IndexModel(
+                [("date_scraped", 1), ("commodity_name", 1), ("market_name", 1)],
+                name="date_commodity_market_lookup_index"
+            )
+            
             # Create all indexes safely
-            await collection.create_indexes([unique_index, commodity_index, date_index])
+            await collection.create_indexes([unique_index, commodity_index, date_index, lookup_index])
             logger.info("MongoDB indexes successfully created/verified.")
         except Exception as e:
             logger.error(f"Error creating database indexes: {e}")
@@ -93,6 +99,35 @@ class Database:
         if self.client:
             self.client.close()
             logger.info("MongoDB connection closed.")
+
+    async def get_scraped_today_keys(self) -> set:
+        """Returns a set of (commodity_name, market_name) tuples scraped today (IST)."""
+        if self.db is None:
+            return set()
+            
+        try:
+            from datetime import datetime, timedelta, timezone
+            # IST is UTC+5:30
+            ist = timezone(timedelta(hours=5, minutes=30))
+            today_ist_str = datetime.now(ist).strftime("%Y-%m-%d")
+            
+            collection = self.db["market_prices"]
+            cursor = collection.find(
+                {"date_scraped": today_ist_str},
+                {"commodity_name": 1, "market_name": 1, "_id": 0}
+            )
+            scraped_keys = set()
+            async for doc in cursor:
+                comm = doc.get("commodity_name")
+                market = doc.get("market_name")
+                if comm and market:
+                    scraped_keys.add((comm, market))
+                    
+            logger.info(f"Found {len(scraped_keys)} complete records already scraped for today ({today_ist_str} IST).")
+            return scraped_keys
+        except Exception as e:
+            logger.error(f"Error fetching scraped_today_keys: {e}")
+            return set()
 
     async def insert_prices(self, data: list):
         if not data:
