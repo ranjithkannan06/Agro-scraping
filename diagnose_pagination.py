@@ -1,4 +1,4 @@
-"""
+r"""
 STEP 1 — LIVE DIAGNOSTIC SCRIPT
 Probes vayalagro.com to answer three questions:
   1. How does pagination actually work on the listing page?

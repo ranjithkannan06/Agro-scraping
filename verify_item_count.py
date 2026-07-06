@@ -1,4 +1,4 @@
-"""
+r"""
 STEP 4 VERIFICATION: Confirm scraped item count matches site total for
 Flowers / Erode — a district known to have > 10 varieties.
 

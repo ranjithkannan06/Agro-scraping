@@ -1,4 +1,4 @@
-"""
+r"""
 Quick Google Sheets diagnostic:
 1. Connects using the existing firebase-service-account.json
 2. Reads the current row count and last few rows of the sheet
