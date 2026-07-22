@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 import sys
+import time
 
 # Load environment variables from project root .env file
 try:
@@ -16,7 +17,22 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from scrapers.vayal_scraper import scrape_vayal_flowers
+
+from analytics.analytics import AnalyticsEngine
+from analytics.reports import write_report
+from config.settings import PipelineSettings
+from dashboard.dashboard_generator import DashboardDatasetGenerator
+from database.mongodb import MongoPriceRepository
+from exporters.csv_exporter import CsvExporter
+from exporters.excel_exporter import ExcelExporter
+from exporters.json_exporter import JsonExporter
+from logger.logger import configure_logging
+from notifications.backend import BackendNotifier
+from parser.collector import VayalCollector
+from sheets.google_sheets import GoogleSheetsSynchronizer
+from transformer.normalizer import CommodityTransformer
+from validator.deduplicator import DeduplicationEngine
+from validator.validator import CommodityValidator
 
 # Configure logging
 logging.basicConfig(
@@ -29,13 +45,102 @@ logging.basicConfig(
 )
 logger = logging.getLogger("scheduler")
 
+
+async def run_pipeline(force=False):
+    settings = PipelineSettings.from_env()
+    pipeline_logger = configure_logging(settings.log_root)
+    start_time = time.perf_counter()
+    error_count = 0
+    repository = MongoPriceRepository(settings.mongodb_url, settings.database_name, pipeline_logger)
+
+    try:
+        pipeline_logger.info("Pipeline started")
+        await repository.ensure_indexes()
+
+        raw_records = await VayalCollector().collect(force=force)
+        pipeline_logger.info("Collector completed", extra={"extra_data": {"records": len(raw_records)}})
+
+        validator = CommodityValidator(settings.valid_values)
+        valid_raw, validation_report = validator.validate(raw_records)
+        write_report(settings.output_root / "reports" / "validation_report.json", validation_report)
+
+        transformed = CommodityTransformer().transform(valid_raw)
+        write_report(settings.output_root / "reports" / "failed_records.json", [
+            issue.record for issue in validation_report.issues
+        ])
+
+        deduplicator = DeduplicationEngine(repository)
+        new_records, duplicate_report = await deduplicator.filter_new(transformed)
+        write_report(settings.output_root / "reports" / "duplicates.json", duplicate_report)
+
+        deltas = {
+            "new": len(new_records),
+            "duplicate": duplicate_report.duplicate,
+            "updated": 0,
+            "invalid": validation_report.invalid,
+        }
+        analytics = AnalyticsEngine().generate(transformed, deltas)
+        analytics["execution"] = {
+            "duration_seconds": round(time.perf_counter() - start_time, 2),
+            "error_count": error_count,
+        }
+        write_report(settings.output_root / "reports" / "analytics.json", analytics)
+
+        CsvExporter().export(transformed, settings.output_root / "csv" / "scraped_data.csv")
+        ExcelExporter().export(transformed, settings.output_root / "excel" / "scraped_data.xlsx")
+        JsonExporter().export(transformed, settings.output_root / "json" / "scraped_data.json")
+
+        DashboardDatasetGenerator().generate(
+            transformed,
+            analytics,
+            settings.output_root / "dashboard",
+        )
+
+        loaded_count = await repository.bulk_upsert(new_records, retries=settings.retry_attempts)
+        sheets_result = GoogleSheetsSynchronizer(
+            settings.google_sheet_id,
+            settings.google_credentials_file,
+            pipeline_logger,
+        ).sync(new_records)
+
+        await BackendNotifier(settings.backend_internal_url, pipeline_logger).publish(new_records)
+
+        pipeline_logger.info(
+            "Pipeline finished",
+            extra={
+                "extra_data": {
+                    "raw": len(raw_records),
+                    "valid": len(valid_raw),
+                    "transformed": len(transformed),
+                    "new": len(new_records),
+                    "loaded": loaded_count,
+                    "sheets": sheets_result,
+                    "duration_seconds": round(time.perf_counter() - start_time, 2),
+                }
+            },
+        )
+        return {
+            "raw": len(raw_records),
+            "valid": len(valid_raw),
+            "new": len(new_records),
+            "loaded": loaded_count,
+            "sheets": sheets_result,
+        }
+    except Exception:
+        error_count += 1
+        pipeline_logger.exception("Pipeline failed")
+        raise
+    finally:
+        await repository.close()
+
+
 async def scheduled_job(force=False):
     logger.info("=============================================================")
     logger.info("Starting scheduled scraping and synchronization job...")
     logger.info("=============================================================")
     try:
-        # Run the full integrated scraper pipeline (Scrape -> DB Upsert -> Google Sheet Sync -> Backend alert)
-        await scrape_vayal_flowers(force=force)
+        # Run the full ETL pipeline: collect -> validate -> transform -> dedupe -> analyze -> load/export.
+        await run_pipeline(force=force)
         logger.info("Scheduled job execution completed successfully.")
     except Exception as e:
         logger.error(f"Error executing scheduled scraper job: {e}")
