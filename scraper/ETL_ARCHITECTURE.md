@@ -40,7 +40,7 @@ class PriceRepository:
 
 `src/parser/extractor.py`: Owns Playwright page actions, DOM extraction, detail-table parsing, and failed-page capture.
 
-`src/scrapers/vayal_scraper.py`: Coordinates Vayal Agro traversal and returns raw legacy-shaped records in memory.
+`src/scrapers/vayal_scraper.py`: Coordinates Vayal Agro traversal, caps concurrent detail tabs, and returns raw legacy-shaped records in memory.
 
 `src/validator/validator.py`: Validates required fields, duplicates, prices, dates, and optional allow-lists.
 
@@ -74,6 +74,8 @@ class PriceRepository:
 
 `src/utils/helpers.py`: Provides small filesystem and JSON serialization helpers.
 
+`src/utils/resource_metrics.py`: Captures wall time, CPU process time, PID, and Python memory usage for logs and analytics.
+
 ## Conflict Log
 
 The old scraper inserted into MongoDB, rewrote Google Sheets, and notified the backend inside `scrape_vayal_flowers()`. That conflicted with the single-source ETL model, so the collector now returns records only; persistence occurs in `run_pipeline()`.
@@ -81,5 +83,9 @@ The old scraper inserted into MongoDB, rewrote Google Sheets, and notified the b
 The previous Google Sheets implementation cleared and rewrote the whole sheet. The new synchronizer diffs existing rows, appends new records, updates changed records, and keeps formatting operations separate from data mutation.
 
 The original `vayal_scraper.py` was over 700 lines and mixed extraction helpers, traversal, parsing, persistence, and notification. It has been reduced to a source adapter, with extraction and page-control helpers moved into `parser/extractor.py`.
+
+The scraper now reuses a single browser context and opens detail pages behind an `asyncio.Semaphore` controlled by `SCRAPER_CONCURRENT_TABS`. This keeps listing navigation stable while still allowing bounded concurrency for page-level history extraction.
+
+Structured logs now include execution duration, CPU process seconds, current memory, peak memory, PID, and error count at major pipeline boundaries.
 
 The dashboard constraint says the web dashboard must read only `outputs/dashboard/*.json`, while the same task also says not to touch dashboard UI or FastAPI routes. The scraper now generates the required dashboard JSON files, but switching the dashboard fetch layer to consume those files requires a later non-scraper change or an approved static-file serving path.

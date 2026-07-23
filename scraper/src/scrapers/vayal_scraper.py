@@ -51,7 +51,7 @@ from parser.extractor import (
 )
 
 
-async def scrape_vayal_flowers(force=False, persist=None):
+async def scrape_vayal_flowers(force=False, persist=None, source_url=None, concurrent_tabs=3):
     """
     Collect Vayal Agro price history records.
 
@@ -68,6 +68,7 @@ async def scrape_vayal_flowers(force=False, persist=None):
     if force:
         logger.info("Force flag enabled for collection. Pipeline deduplication still runs later.")
     all_records = []
+    tab_semaphore = asyncio.Semaphore(max(1, int(concurrent_tabs or 1)))
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(headless=False, slow_mo=100)
@@ -78,16 +79,16 @@ async def scrape_vayal_flowers(force=False, persist=None):
         page = await context.new_page()
 
         try:
-            base_url = os.getenv("SCRAPER_SOURCE_URL", "https://vayalagro.com/market-price")
+            base_url = source_url or os.getenv("SCRAPER_SOURCE_URL", "https://vayalagro.com/market-price")
             seen_hrefs = set()
 
             await robust_action(page, "goto", base_url)
             await page.wait_for_timeout(4000)
 
-            direct_records = await _collect_direct_links(page, seen_hrefs, scraped_today_keys, force)
+            direct_records = await _collect_direct_links(context, page, tab_semaphore, seen_hrefs, scraped_today_keys, force)
             all_records.extend(direct_records)
 
-            form_records = await _collect_form_results(page, base_url, seen_hrefs, scraped_today_keys, force)
+            form_records = await _collect_form_results(context, page, tab_semaphore, base_url, seen_hrefs, scraped_today_keys, force)
             all_records.extend(form_records)
         except Exception as exc:
             logger.error("Global scraper run exception encountered: %s", exc)
@@ -106,7 +107,7 @@ async def scrape_vayal_flowers(force=False, persist=None):
     return all_records
 
 
-async def _collect_direct_links(page, seen_hrefs: set, scraped_today_keys: set, force: bool):
+async def _collect_direct_links(context, page, semaphore: asyncio.Semaphore, seen_hrefs: set, scraped_today_keys: set, force: bool):
     logger.info("Starting direct link traversal mode.")
     records = []
     unique_links = []
@@ -117,14 +118,16 @@ async def _collect_direct_links(page, seen_hrefs: set, scraped_today_keys: set, 
             unique_links.append(link)
 
     logger.info("Discovered %s unique commodity links on the landing page.", len(unique_links))
-    for link_meta in unique_links:
-        detail_records = await _scrape_link_history(page, link_meta, get_category_from_url(link_meta["href"]), scraped_today_keys, force)
-        records.extend(detail_records)
-        await asyncio.sleep(get_random_delay())
+    tasks = [
+        _scrape_link_history(context, semaphore, link_meta, get_category_from_url(link_meta["href"]), scraped_today_keys, force)
+        for link_meta in unique_links
+    ]
+    for result in await asyncio.gather(*tasks):
+        records.extend(result)
     return records
 
 
-async def _collect_form_results(page, base_url: str, seen_hrefs: set, scraped_today_keys: set, force: bool):
+async def _collect_form_results(context, page, semaphore: asyncio.Semaphore, base_url: str, seen_hrefs: set, scraped_today_keys: set, force: bool):
     logger.info("Starting dropdown form traversal mode.")
     records = []
 
@@ -136,7 +139,9 @@ async def _collect_form_results(page, base_url: str, seen_hrefs: set, scraped_to
 
     for category in VAYAL_CATEGORIES:
         category_records = await _collect_category_results(
+            context,
             page,
+            semaphore,
             base_url,
             category,
             seen_hrefs,
@@ -147,7 +152,7 @@ async def _collect_form_results(page, base_url: str, seen_hrefs: set, scraped_to
     return records
 
 
-async def _collect_category_results(page, base_url: str, category: str, seen_hrefs: set, scraped_today_keys: set, force: bool):
+async def _collect_category_results(context, page, semaphore: asyncio.Semaphore, base_url: str, category: str, seen_hrefs: set, scraped_today_keys: set, force: bool):
     logger.info("Scanning districts for category %s.", category)
     records = []
 
@@ -165,7 +170,9 @@ async def _collect_category_results(page, base_url: str, category: str, seen_hre
 
     for district in await get_district_options(page):
         district_records = await _collect_district_results(
+            context,
             page,
+            semaphore,
             base_url,
             category,
             district,
@@ -177,7 +184,7 @@ async def _collect_category_results(page, base_url: str, category: str, seen_hre
     return records
 
 
-async def _collect_district_results(page, base_url: str, category: str, district: str, seen_hrefs: set, scraped_today_keys: set, force: bool):
+async def _collect_district_results(context, page, semaphore: asyncio.Semaphore, base_url: str, category: str, district: str, seen_hrefs: set, scraped_today_keys: set, force: bool):
     logger.info("Scanning category=%s district=%s.", category, district)
     records = []
 
@@ -209,13 +216,14 @@ async def _collect_district_results(page, base_url: str, category: str, district
                 break
             last_fingerprint = fingerprint
 
+            tasks = []
             for link_meta in listing_links:
                 if link_meta["href"] in seen_hrefs:
                     continue
                 seen_hrefs.add(link_meta["href"])
-                detail_records = await _scrape_link_history(page, link_meta, category, scraped_today_keys, force, district)
-                records.extend(detail_records)
-                await asyncio.sleep(get_random_delay())
+                tasks.append(_scrape_link_history(context, semaphore, link_meta, category, scraped_today_keys, force, district))
+            for result in await asyncio.gather(*tasks):
+                records.extend(result)
 
             if page_num >= 20 or not await click_next_page(page):
                 break
@@ -225,22 +233,29 @@ async def _collect_district_results(page, base_url: str, category: str, district
     return records
 
 
-async def _scrape_link_history(page, link_meta: dict, category: str, scraped_today_keys: set, force: bool, district_override: str | None = None):
+async def _scrape_link_history(context, semaphore: asyncio.Semaphore, link_meta: dict, category: str, scraped_today_keys: set, force: bool, district_override: str | None = None):
     commodity = link_meta.get("commodity") or "Unknown Commodity"
     market = link_meta.get("city") or link_meta.get("district") or district_override or "Unknown Market"
     district = district_override or link_meta.get("district", market)
     if not force and (commodity, market) in scraped_today_keys:
         logger.info("Skipping %s at %s because it was already scraped today.", commodity, market)
         return []
-    return await scrape_detail_page(
-        page,
-        link_meta["href"],
-        category,
-        commodity,
-        market,
-        district,
-        link_meta.get("unit", "Kg"),
-    )
+    async with semaphore:
+        detail_page = await context.new_page()
+        try:
+            records = await scrape_detail_page(
+                detail_page,
+                link_meta["href"],
+                category,
+                commodity,
+                market,
+                district,
+                link_meta.get("unit", "Kg"),
+            )
+            await asyncio.sleep(get_random_delay())
+            return records
+        finally:
+            await detail_page.close()
 
 
 if __name__ == "__main__":

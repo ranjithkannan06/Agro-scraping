@@ -31,6 +31,7 @@ from notifications.backend import BackendNotifier
 from parser.collector import VayalCollector
 from sheets.google_sheets import GoogleSheetsSynchronizer
 from transformer.normalizer import CommodityTransformer
+from utils.resource_metrics import ResourceSampler
 from validator.deduplicator import DeduplicationEngine
 from validator.validator import CommodityValidator
 
@@ -49,20 +50,28 @@ logger = logging.getLogger("scheduler")
 async def run_pipeline(force=False):
     settings = PipelineSettings.from_env()
     pipeline_logger = configure_logging(settings.log_root)
+    resources = ResourceSampler()
     start_time = time.perf_counter()
     error_count = 0
     repository = MongoPriceRepository(settings.mongodb_url, settings.database_name, pipeline_logger)
 
     try:
-        pipeline_logger.info("Pipeline started")
+        pipeline_logger.info("Pipeline started", extra={"extra_data": resources.delta()})
         await repository.ensure_indexes()
 
-        raw_records = await VayalCollector().collect(force=force)
-        pipeline_logger.info("Collector completed", extra={"extra_data": {"records": len(raw_records)}})
+        raw_records = await VayalCollector(settings.source_url, settings.concurrent_tabs).collect(force=force)
+        pipeline_logger.info(
+            "Collector completed",
+            extra={"extra_data": {"records": len(raw_records), **resources.delta()}},
+        )
 
         validator = CommodityValidator(settings.valid_values)
         valid_raw, validation_report = validator.validate(raw_records)
         write_report(settings.output_root / "reports" / "validation_report.json", validation_report)
+        pipeline_logger.info(
+            "Validation completed",
+            extra={"extra_data": {"valid": len(valid_raw), "invalid": validation_report.invalid, **resources.delta()}},
+        )
 
         transformed = CommodityTransformer().transform(valid_raw)
         write_report(settings.output_root / "reports" / "failed_records.json", [
@@ -72,6 +81,10 @@ async def run_pipeline(force=False):
         deduplicator = DeduplicationEngine(repository)
         new_records, duplicate_report = await deduplicator.filter_new(transformed)
         write_report(settings.output_root / "reports" / "duplicates.json", duplicate_report)
+        pipeline_logger.info(
+            "Deduplication completed",
+            extra={"extra_data": {"new": len(new_records), "duplicate": duplicate_report.duplicate, **resources.delta()}},
+        )
 
         deltas = {
             "new": len(new_records),
@@ -83,18 +96,21 @@ async def run_pipeline(force=False):
         analytics["execution"] = {
             "duration_seconds": round(time.perf_counter() - start_time, 2),
             "error_count": error_count,
+            **resources.delta(),
         }
         write_report(settings.output_root / "reports" / "analytics.json", analytics)
 
         CsvExporter().export(transformed, settings.output_root / "csv" / "scraped_data.csv")
         ExcelExporter().export(transformed, settings.output_root / "excel" / "scraped_data.xlsx")
         JsonExporter().export(transformed, settings.output_root / "json" / "scraped_data.json")
+        pipeline_logger.info("Exports completed", extra={"extra_data": resources.delta()})
 
         DashboardDatasetGenerator().generate(
             transformed,
             analytics,
             settings.output_root / "dashboard",
         )
+        pipeline_logger.info("Dashboard datasets completed", extra={"extra_data": resources.delta()})
 
         loaded_count = await repository.bulk_upsert(new_records, retries=settings.retry_attempts)
         sheets_result = GoogleSheetsSynchronizer(
@@ -116,6 +132,7 @@ async def run_pipeline(force=False):
                     "loaded": loaded_count,
                     "sheets": sheets_result,
                     "duration_seconds": round(time.perf_counter() - start_time, 2),
+                    **resources.delta(),
                 }
             },
         )

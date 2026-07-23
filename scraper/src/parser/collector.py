@@ -10,8 +10,16 @@ from scrapers.vayal_scraper import scrape_vayal_flowers
 class VayalCollector:
     """Collect raw commodity rows from Vayal Agro using the legacy Playwright traversal."""
 
+    def __init__(self, source_url: str, concurrent_tabs: int):
+        self.source_url = source_url
+        self.concurrent_tabs = concurrent_tabs
+
     async def collect(self, force: bool = False) -> List[RawCommodity]:
-        legacy_records = await scrape_vayal_flowers(force=force)
+        legacy_records = await scrape_vayal_flowers(
+            force=force,
+            source_url=self.source_url,
+            concurrent_tabs=self.concurrent_tabs,
+        )
         return [self._from_legacy(record) for record in legacy_records]
 
     @staticmethod
